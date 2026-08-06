@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b0e12">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Miroir Anatomique</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css?v=6">
+</head>
+<body>
+
+<div id="banner">⚠️ Visualisation éducative — pas un dispositif médical, pas un diagnostic. Tout est traité localement : aucune image ne quitte cet appareil.</div>
+
+<div id="stage">
+  <div id="frame">
+    <video id="video" class="mirrored" autoplay playsinline muted></video>
+    <svg id="overlay" class="mirrored" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg>
+  </div>
+</div>
+
+<!-- Écran d'accueil -->
+<div id="splash">
+  <h1>MIROIR <b>ANATOMIQUE</b></h1>
+  <p>Place-toi face à la caméra, à 1,5–2 m, corps entier visible si possible.
+     L'atlas anatomique est mis à l'échelle de <b>tes</b> proportions et superposé en temps réel.
+     La détection tourne entièrement dans ton navigateur — rien n'est envoyé, rien n'est enregistré.</p>
+  <button class="primary" id="startBtn">Démarrer la caméra</button>
+  <button class="ghost" id="demoBtn">Mode démo (sans caméra)</button>
+  <div id="status">Chargement du modèle de pose…</div>
+</div>
+
+<!-- Outils -->
+<div id="tools" class="hidden">
+  <button class="tool on" id="lensTool" title="Lentille rayons X">◎</button>
+  <button class="tool" id="segTool" title="Découper sur la silhouette">◐</button>
+  <button class="tool" id="fsTool" title="Plein écran">⛶</button>
+  <button class="tool" id="camTool" title="Changer de caméra">⟲</button>
+  <button class="tool on" id="mirrorTool" title="Mode miroir">⇄</button>
+  <div id="opacityWrap">
+    <input type="range" id="opacity" min="10" max="100" value="90">
+    <span>OPAC</span>
+  </div>
+</div>
+
+<!-- Infos -->
+<div id="hud" class="hidden">
+  <div>Couches : <b id="layersOn">OS</b></div>
+  <div><span id="fps">— i/s</span> · <span id="detect">En attente…</span></div>
+  <div id="lensState">lentille ON</div>
+</div>
+
+<!-- Barre de couches (remplie par mirror.js) -->
+<div id="layerBar" class="hidden"></div>
+
+<!-- Indication de repérage tactile -->
+<div id="pickHint" class="hidden"></div>
+
+<!-- Panneau premiers secours -->
+<div id="aidPanel" class="hidden">
+  <div id="aidHead">
+    <h2>🩹 Plaie — aide aux premiers secours</h2>
+    <select id="regionSel" style="background:#16202b;color:#dfe6ee;border:1px solid #253242;border-radius:7px;padding:5px 7px;font-size:11px"></select>
+    <button id="aidClose">×</button>
+  </div>
+  <div id="aidDisclaimer">
+    Cette app <b>ne reconnaît pas une plaie par l'image</b> et ne pose aucun diagnostic.
+    Elle te dit ce qui passe sous la peau à l'endroit touché, puis te guide par questions
+    vers la bonne conduite. En cas de doute, appelle les secours.
+  </div>
+  <div id="aidBody"></div>
+  <div id="aidFoot"></div>
+</div>
+
+<script src="js/layers.js?v=8" defer></script>
+<script src="js/lens.js?v=8" defer></script>
+<script src="js/segment.js?v=8" defer></script>
+<script src="js/firstaid.js?v=8" defer></script>
+<script src="js/mirror.js?v=8" defer></script>
+<script>
+  if ("serviceWorker" in navigator && location.protocol === "https:") {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+</script>
+</body>
+</html>

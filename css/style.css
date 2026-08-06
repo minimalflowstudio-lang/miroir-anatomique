@@ -1,0 +1,267 @@
+:root {
+  --bg: #0b0e12;
+  --panel: rgba(12, 17, 23, 0.92);
+  --accent: #4fc3f7;
+  --accent-dark: #06222e;
+  --text: #dfe6ee;
+  --text-dim: #9fb2c5;
+  --alert: #ff5252;
+  --warn: #ffa726;
+  --ok: #66bb6a;
+
+  --bone: #ece4d4;
+  --bone-edge: #c9bda3;
+  --muscle: #c0392b;
+  --muscle-edge: #8e2b20;
+  --nerve: #ffe066;
+  --organ-lung: #d98cb3;
+  --organ-heart: #e04b4b;
+  --organ-liver: #8b4a3a;
+  --organ-gut: #d7a06a;
+  --organ-kidney: #a05a4a;
+  --organ-brain: #d7b9c5;
+  --artery: #e53935;
+  --vein: #3f6fd8;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+.hidden { display: none !important; }
+
+/* ---------- Bandeau légal ---------- */
+#banner {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 40;
+  background: rgba(176, 116, 18, 0.94); color: #fff;
+  text-align: center; font-size: 12px; font-weight: 600; line-height: 1.35;
+  padding: calc(5px + var(--safe-top)) 10px 5px;
+  letter-spacing: 0.2px;
+}
+
+/* ---------- Scène caméra ---------- */
+#stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+#frame { position: relative; }
+#video, #overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+#video { object-fit: cover; background: #000; }
+#overlay { pointer-events: none; }
+.mirrored { transform: scaleX(-1); }
+
+/* ---------- Couches anatomiques ---------- */
+.bone      { fill: var(--bone); stroke: var(--bone-edge); stroke-width: 0.012; }
+.bone-line { stroke: var(--bone); fill: none; stroke-linecap: round; }
+.muscle    { fill: var(--muscle); stroke: var(--muscle-edge); stroke-width: 0.01; opacity: 0.82; }
+.muscle-fiber { stroke: #e8776a; fill: none; stroke-width: 0.008; opacity: 0.5; }
+.nerve     { stroke: var(--nerve); fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.nerve-glow { stroke: var(--nerve); fill: none; opacity: 0.25; stroke-linecap: round; }
+.vessel-a  { stroke: var(--artery); fill: none; stroke-linecap: round; }
+.vessel-v  { stroke: var(--vein);  fill: none; stroke-linecap: round; }
+.organ     { stroke: rgba(0,0,0,0.35); stroke-width: 0.006; }
+
+#layerGroups > g { transition: opacity 0.25s ease; }
+
+/* ---------- HUD ---------- */
+#hud {
+  position: fixed; left: 10px; z-index: 30;
+  bottom: calc(96px + var(--safe-bottom));
+  font-size: 11px; color: var(--text-dim);
+  background: var(--panel); padding: 6px 10px; border-radius: 8px; line-height: 1.5;
+  max-width: 46vw;
+}
+
+/* ---------- Barre de couches (bas) ---------- */
+#layerBar {
+  position: fixed; left: 0; right: 0; z-index: 35;
+  bottom: 0; padding: 8px 8px calc(8px + var(--safe-bottom));
+  background: linear-gradient(to top, rgba(6,9,12,0.96), rgba(6,9,12,0.0));
+  display: flex; gap: 6px; justify-content: center; align-items: flex-end;
+  overflow-x: auto; scrollbar-width: none;
+}
+#layerBar::-webkit-scrollbar { display: none; }
+
+.layer-btn {
+  flex: 0 0 auto;
+  background: rgba(30, 40, 50, 0.9); color: var(--text-dim);
+  border: 1.5px solid transparent; border-radius: 12px;
+  padding: 7px 12px; min-width: 62px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.4px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  cursor: pointer; transition: all 0.15s;
+}
+.layer-btn .dot { width: 16px; height: 4px; border-radius: 2px; background: currentColor; }
+.layer-btn.on { color: var(--text); background: rgba(50, 68, 84, 0.95); border-color: currentColor; }
+.layer-btn[data-layer="bones"].on   { color: var(--bone); }
+.layer-btn[data-layer="muscles"].on { color: #e8776a; }
+.layer-btn[data-layer="nerves"].on  { color: var(--nerve); }
+.layer-btn[data-layer="organs"].on  { color: var(--organ-lung); }
+.layer-btn[data-layer="vessels"].on { color: var(--artery); }
+
+#aidBtn {
+  flex: 0 0 auto;
+  background: var(--alert); color: #fff; border: none; border-radius: 12px;
+  padding: 7px 12px; min-width: 62px; font-size: 11px; font-weight: 800;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  cursor: pointer; letter-spacing: 0.4px;
+}
+#aidBtn .dot { width: 16px; height: 4px; border-radius: 2px; background: #fff; }
+
+/* ---------- Réglages (haut droite) ---------- */
+#tools {
+  position: fixed; right: 8px; z-index: 35;
+  top: calc(46px + var(--safe-top));
+  display: flex; flex-direction: column; gap: 6px; align-items: flex-end;
+}
+.tool {
+  background: var(--panel); color: var(--text-dim);
+  border: none; border-radius: 10px; width: 40px; height: 40px;
+  font-size: 17px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.tool.on { color: var(--accent); }
+#opacityWrap {
+  background: var(--panel); border-radius: 10px; padding: 8px 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  font-size: 9px; color: var(--text-dim);
+}
+#opacity { writing-mode: vertical-lr; direction: rtl; width: 22px; height: 90px; accent-color: var(--accent); }
+
+/* ---------- Écran d'accueil ---------- */
+#splash {
+  position: fixed; inset: 0; z-index: 25;
+  display: flex; flex-direction: column; gap: 14px; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, #131a22 0%, var(--bg) 70%);
+  text-align: center; padding: 60px 24px 24px;
+}
+#splash h1 { font-size: 25px; font-weight: 300; letter-spacing: 2px; }
+#splash h1 b { font-weight: 700; color: var(--accent); }
+#splash p { max-width: 480px; color: var(--text-dim); font-size: 13.5px; line-height: 1.6; }
+#status { font-size: 12px; color: #7f95a8; min-height: 1.2em; max-width: 90vw; }
+
+button.primary {
+  background: var(--accent); color: var(--accent-dark); border: none; border-radius: 10px;
+  padding: 13px 24px; font-size: 16px; font-weight: 700; cursor: pointer;
+}
+button.primary:disabled { background: #45525e; color: #90a0ae; }
+button.ghost {
+  background: transparent; color: var(--text-dim); border: 1.5px solid #3a4652;
+  border-radius: 10px; padding: 11px 20px; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+
+/* ---------- Panneau premiers secours ---------- */
+#aidPanel {
+  position: fixed; inset: 0; z-index: 50;
+  background: #0d1218; display: flex; flex-direction: column;
+  padding-top: var(--safe-top); padding-bottom: var(--safe-bottom);
+}
+#aidHead {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; border-bottom: 1px solid #1e2833; flex: 0 0 auto;
+}
+#aidHead h2 { font-size: 15px; font-weight: 700; flex: 1; letter-spacing: 0.3px; }
+#aidClose { background: none; border: none; color: var(--text-dim); font-size: 26px; cursor: pointer; line-height: 1; padding: 0 6px; }
+
+#aidDisclaimer {
+  background: rgba(176, 116, 18, 0.2); border-left: 3px solid var(--warn);
+  color: #f0d5a8; font-size: 11.5px; line-height: 1.5; padding: 9px 12px; margin: 10px 14px 0;
+  border-radius: 0 6px 6px 0;
+}
+
+#aidBody { flex: 1; overflow-y: auto; padding: 14px; -webkit-overflow-scrolling: touch; }
+
+.aid-step h3 { font-size: 17px; margin-bottom: 6px; line-height: 1.35; }
+.aid-step .sub { color: var(--text-dim); font-size: 13px; line-height: 1.55; margin-bottom: 16px; }
+
+.choice {
+  display: block; width: 100%; text-align: left;
+  background: #16202b; color: var(--text); border: 1.5px solid #253242;
+  border-radius: 11px; padding: 14px 16px; margin-bottom: 9px;
+  font-size: 14.5px; font-weight: 600; cursor: pointer; line-height: 1.4;
+}
+.choice:active { background: #1e2b39; }
+.choice .hint { display: block; font-weight: 400; font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+.choice.danger { border-color: rgba(255, 82, 82, 0.5); }
+
+/* Verdicts */
+.verdict { border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.verdict h3 { font-size: 19px; margin-bottom: 8px; }
+.verdict p { font-size: 13.5px; line-height: 1.6; }
+.verdict.red    { background: rgba(255, 82, 82, 0.16); border: 1.5px solid var(--alert); }
+.verdict.orange { background: rgba(255, 167, 38, 0.14); border: 1.5px solid var(--warn); }
+.verdict.green  { background: rgba(102, 187, 106, 0.13); border: 1.5px solid var(--ok); }
+.verdict.red h3    { color: #ff8a80; }
+.verdict.orange h3 { color: #ffcc80; }
+.verdict.green h3  { color: #a5d6a7; }
+
+.gestes { list-style: none; margin: 6px 0 18px; }
+.gestes li {
+  position: relative; padding: 9px 0 9px 30px; font-size: 14px; line-height: 1.5;
+  border-bottom: 1px solid #18222d;
+}
+.gestes li::before {
+  content: counter(g); counter-increment: g;
+  position: absolute; left: 0; top: 9px;
+  width: 21px; height: 21px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-dark);
+  font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center;
+}
+.gestes { counter-reset: g; }
+.gestes li.no::before { content: "✕"; background: var(--alert); color: #fff; font-size: 12px; }
+
+.call-row { display: flex; flex-direction: column; gap: 9px; margin-bottom: 18px; }
+a.call {
+  display: flex; align-items: center; gap: 12px; text-decoration: none;
+  background: var(--alert); color: #fff; border-radius: 12px; padding: 15px 18px;
+  font-size: 16px; font-weight: 800;
+}
+a.call.soft { background: #1f2b38; color: var(--text); border: 1.5px solid #35485c; font-weight: 700; font-size: 14.5px; }
+a.call .num { margin-left: auto; font-size: 20px; letter-spacing: 1px; }
+
+.zone-box {
+  background: #131c25; border: 1px solid #24313f; border-radius: 11px;
+  padding: 13px 15px; margin-bottom: 16px;
+}
+.zone-box .label { font-size: 10.5px; letter-spacing: 1px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 5px; }
+.zone-box .name { font-size: 16px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+.zone-box .under { font-size: 12.5px; line-height: 1.6; color: #b9c8d6; }
+.zone-box .under b { color: #e8d8a8; font-weight: 600; }
+
+#aidFoot { flex: 0 0 auto; padding: 10px 14px 14px; border-top: 1px solid #1e2833; display: flex; gap: 9px; }
+#aidFoot button { flex: 1; }
+
+/* Repérage tactile de la zone */
+#pickHint {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 45;
+  top: calc(52px + var(--safe-top));
+  background: rgba(79, 195, 247, 0.95); color: var(--accent-dark);
+  font-size: 13px; font-weight: 700; padding: 9px 16px; border-radius: 20px;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.5); text-align: center; max-width: 88vw;
+}
+#pickMark { pointer-events: none; }
+
+/* Téléphone étroit : les six boutons doivent tenir sans débordement */
+@media (max-width: 430px) {
+  #layerBar { gap: 4px; padding: 6px 4px calc(6px + var(--safe-bottom)); justify-content: space-between; }
+  .layer-btn, #aidBtn { min-width: 0; flex: 1 1 0; padding: 7px 2px; font-size: 9.5px; letter-spacing: 0; }
+  .layer-btn .dot, #aidBtn .dot { width: 14px; }
+  #banner { font-size: 10.5px; padding: calc(4px + var(--safe-top)) 8px 4px; }
+  #hud { font-size: 10px; max-width: 55vw; bottom: calc(84px + var(--safe-bottom)); }
+  #tools { top: calc(60px + var(--safe-top)); }
+  .tool { width: 36px; height: 36px; font-size: 15px; }
+  #opacity { height: 70px; }
+}
+
+@media (min-width: 900px) {
+  #banner { font-size: 13px; }
+  #hud { font-size: 12px; max-width: none; }
+  #aidPanel { left: auto; right: 0; width: 420px; border-left: 1px solid #1e2833; }
+}
