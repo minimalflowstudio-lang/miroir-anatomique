@@ -254,9 +254,21 @@ function updateHud() {
     if (handOn || handLoading) {
       /* En mode main, l'état du corps n'apprend rien. Ce qu'il faut savoir,
          c'est si le détecteur est chargé et s'il voit une main. */
-      const det = handLoading ? "TÉLÉCHARGEMENT…" : (handLandmarker ? "chargé" : "absent");
+      const det = handLoading ? "TÉLÉCHARGEMENT…" : (handLandmarker ? "PRÊT" : "absent");
+
+      /* Ce qui est POSÉ à l'écran, et pas seulement ce qui est détecté :
+         c'est ce qui départage « le détecteur ne voit rien » de « il voit mais
+         rien ne s'affiche », donc l'amont de l'aval. */
+      let posees = "";
+      try {
+        const dh = HAND && HAND.debugHands ? HAND.debugHands() : null;
+        if (dh && dh.length) {
+          posees = " · posées " + dh.map(h => h.side.toUpperCase() + (h.visible ? "✓" : "✗")).join(" ");
+        }
+      } catch { /* diagnostic : ne doit jamais casser l'app */ }
+
       d.textContent = "MAIN · cam " + cam + " · détecteur " + det
-                    + " · mains vues " + mainsVues;
+                    + " · mains vues " + mainsVues + posees;
     } else {
       d.textContent = "corps · cam " + cam + " · " + moteur
                     + " · os " + os + " · points " + pts + " · repères " + reperes;
@@ -446,6 +458,10 @@ function feedHand(now) {
   try { res = handLandmarker.detectForVideo(video, now); }
   catch { return; }
 
+  /* ⚠️ Ne JAMAIS filtrer les points de main sur `visibility` : MediaPipe ne
+     remplit ce champ que pour la posture, il vaut 0 sur tous les points de
+     main. Un filtre comme celui du corps (`vis()`) jetterait absolument tout.
+     Vérifié par Ada sur image réelle. */
   const mains = res.landmarks || [];
   mainsVues = mains.length;
 
