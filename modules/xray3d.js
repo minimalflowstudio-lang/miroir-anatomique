@@ -160,13 +160,28 @@ async function loadLayer(key, onProgress) {
     });
   }
 
-  /* Repère de repos du corps : haut du torse (≈ épaules) → centre du bassin. */
-  const t = rig.regions.torso, p = rig.regions.pelvis;
-  if (t && p && !bodyRest) {
-    bodyRest = {
-      top: new THREE.Vector3().fromArray(t.a),        // extrémité haute du torse
-      bottom: new THREE.Vector3().fromArray(p.center),
-    };
+  /* Repère de repos du corps : haut du thorax → centre du bassin.
+     Le pipeline l'écrit dans chaque rig sous `body`, car seuls `bones` et
+     `muscles` possèdent une région `pelvis` — sans ce repère commun, les
+     couches organes / nerfs / vaisseaux n'auraient rien sur quoi se poser. */
+  if (!bodyRest) {
+    if (rig.body) {
+      bodyRest = {
+        top: new THREE.Vector3().fromArray(rig.body.top),
+        bottom: new THREE.Vector3().fromArray(rig.body.bottom),
+      };
+    } else {
+      const t = rig.regions.torso, p = rig.regions.pelvis;   // rigs d'avant
+      if (t && p) {
+        bodyRest = {
+          top: new THREE.Vector3().fromArray(t.a),
+          bottom: new THREE.Vector3().fromArray(p.center),
+        };
+      } else {
+        console.warn("[xray3d] rig " + key + " sans repère `body` : régénère "
+                     + "les assets avec scripts/export_zanatomy.py");
+      }
+    }
   }
   groups[key].userData.loaded = true;
   onProgress && onProgress(key + " : prêt", 1);

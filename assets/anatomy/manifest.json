@@ -7,7 +7,7 @@
    "tris_in": 598529,
    "tris_out": 139984,
    "ratio": 0.23391,
-   "bytes": 3423408,
+   "bytes": 3891396,
    "draco": false,
    "regions": [
     "foot.l",
@@ -30,12 +30,26 @@
    "rig": "bones.rig.json"
   },
   {
+   "key": "hand",
+   "file": "hand.glb",
+   "tris_in": 21768,
+   "tris_out": 21768,
+   "ratio": 1.0,
+   "bytes": 462988,
+   "draco": false,
+   "regions": [
+    "hand.l",
+    "hand.r"
+   ],
+   "rig": "hand.rig.json"
+  },
+  {
    "key": "muscles",
    "file": "muscles.glb",
    "tris_in": 2137481,
    "tris_out": 179980,
    "ratio": 0.08421,
-   "bytes": 4573864,
+   "bytes": 5677492,
    "draco": false,
    "regions": [
     "foot.l",
@@ -63,7 +77,7 @@
    "tris_in": 786516,
    "tris_out": 105994,
    "ratio": 0.11443,
-   "bytes": 3269784,
+   "bytes": 3998260,
    "draco": false,
    "regions": [
     "head",
@@ -79,7 +93,7 @@
    "tris_in": 83178,
    "tris_out": 83178,
    "ratio": 1.0,
-   "bytes": 1930780,
+   "bytes": 2399024,
    "draco": false,
    "regions": [
     "head",
@@ -94,7 +108,7 @@
    "tris_in": 67840,
    "tris_out": 67840,
    "ratio": 1.0,
-   "bytes": 1305736,
+   "bytes": 1715060,
    "draco": false,
    "regions": [
     "head",

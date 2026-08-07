@@ -188,6 +188,7 @@ function updateHud() {
   const hybride = xrayOn && LAYER_META.some(m => active[m.key] && !COUVERTURE_3D[m.key]);
   document.getElementById("lensState").textContent =
     (xrayOn ? (hybride ? "3D réelle + schéma" : "3D réelle") : "schéma") +
+    (handOn ? " · MAIN (" + mainsVues + ")" : "") +
     (LENS.isEnabled() ? " · lentille ON" : " · lentille OFF") +
     (SEG.isEnabled() ? " · silhouette ON" : "");
 }
@@ -203,6 +204,7 @@ document.getElementById("mirrorTool").addEventListener("click", e => {
   e.currentTarget.classList.toggle("on", mirrored);
   LENS.setMirrored(mirrored);
   if (XRAY && XRAY.isReady()) XRAY.setMirrored(mirrored);
+  if (HAND && HAND.isReady()) HAND.setMirrored(mirrored);
 });
 
 /* ------------------------------------------------- Moteur 3D (Ada) ------
@@ -268,6 +270,78 @@ async function toggle3D() {
   }
 }
 
+/* ------------------------------------------------------ Mode MAIN -------
+   Un second détecteur, spécialisé : 21 points par main en mètres réels, contre
+   4 points inexploitables dans le modèle de posture. C'est lui qui permet
+   d'approcher la caméra d'une main et d'en voir les os tourner. */
+const HAND = window.MIROIR_HAND;
+const handCanvas = document.getElementById("handCanvas");
+const MODELE_MAIN = "https://storage.googleapis.com/mediapipe-models/" +
+                    "hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+
+let handLandmarker = null, handOn = false, handLoading = false;
+
+async function toggleHand() {
+  if (handLoading) return;
+
+  if (handOn) {
+    handOn = false;
+    handCanvas.classList.remove("on");
+    handTool.classList.remove("on");
+    updateHud();
+    return;
+  }
+  if (!HAND) { detectEl.textContent = "Module main absent (modules/xray_hand.js)."; return; }
+  if (demoMode) { detectEl.textContent = "Mode main : il faut la caméra."; return; }
+
+  handLoading = true;
+  handTool.textContent = "…";
+  try {
+    if (!handLandmarker) {
+      const { HandLandmarker, FilesetResolver } = await import(MEDIAPIPE_CDN);
+      const files = await FilesetResolver.forVisionTasks(MEDIAPIPE_CDN + "/wasm");
+      handLandmarker = await HandLandmarker.createFromOptions(files, {
+        baseOptions: { modelAssetPath: MODELE_MAIN, delegate: "GPU" },
+        runningMode: "VIDEO",
+        numHands: 2
+      });
+    }
+    handCanvas.classList.add("on");
+    if (!HAND.isReady()) await HAND.init({ canvas: handCanvas, videoEl: video });
+    HAND.setDims(dims);
+    HAND.setMirrored(mirrored);
+    HAND.setDepthOcclusion(true);
+    handOn = true;
+    handTool.classList.add("on");
+    detectEl.textContent = "Mode main : approche ta main de la caméra.";
+  } catch (e) {
+    handCanvas.classList.remove("on");
+    detectEl.textContent = "Mode main : " + e.message;
+  } finally {
+    handLoading = false;
+    handTool.textContent = "✋";
+    updateHud();
+  }
+}
+
+/* Alimente le module main : pose des 21 points, lentille, silhouette. */
+function feedHand(now) {
+  if (!handOn || !handLandmarker || !HAND) return;
+  let res;
+  try { res = handLandmarker.detectForVideo(video, now); }
+  catch { return; }
+
+  HAND.setLens(LENS.getState());
+  HAND.update({
+    landmarks:        res.landmarks || [],
+    worldLandmarks:   res.worldLandmarks || [],
+    handedness:       res.handedness || res.handednesses || [],
+    segmentationMask: SEG.isEnabled() ? SEG.getCanvas() : null
+  });
+  mainsVues = (res.landmarks || []).length;
+}
+let mainsVues = 0;
+
 const SEG = window.MIROIR_SEG;
 SEG.attach(overlay);
 
@@ -283,6 +357,9 @@ segTool.addEventListener("click", () => {
 
 const d3Tool = document.getElementById("d3Tool");
 d3Tool.addEventListener("click", toggle3D);
+
+const handTool = document.getElementById("handTool");
+handTool.addEventListener("click", toggleHand);
 
 const lensTool = document.getElementById("lensTool");
 lensTool.addEventListener("click", () => {
@@ -389,6 +466,7 @@ function fitFrame() {
   overlay.setAttribute("viewBox", `0 0 ${dims.W} ${dims.H}`);
   LENS.setDims(dims);
   if (XRAY && XRAY.isReady()) XRAY.setDims(dims);
+  if (HAND && HAND.isReady()) HAND.setDims(dims);
 }
 function onResize() {
   if (demoMode) setDemoDims();
@@ -515,6 +593,7 @@ function loop() {
     update(res.landmarks?.[0] || null);
     SEG.process(video, now);
     feed3D(res);
+    feedHand(now);
     tickFps(now, "");
   }
   requestAnimationFrame(loop);
