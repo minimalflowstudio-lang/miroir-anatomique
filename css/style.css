@@ -72,7 +72,10 @@ html, body {
 }
 #xrayCanvas, #handCanvas { pointer-events: none; display: none; }
 #xrayCanvas.on, #handCanvas.on { display: block; }
-#video { object-fit: cover; background: #000; }
+/* « contain » et non « cover » : le cadre a exactement le rapport de l'image,
+   donc les deux sont équivalents — sauf si le navigateur rapporte une taille
+   inattendue, et là « contain » préserve les proportions au lieu de rogner. */
+#video { object-fit: contain; background: #000; }
 #overlay { pointer-events: none; }
 .mirrored { transform: scaleX(-1); }
 

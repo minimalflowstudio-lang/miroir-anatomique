@@ -267,15 +267,7 @@ function updateHud() {
 document.getElementById("opacity").addEventListener("input", e => {
   layerRoot.style.opacity = e.target.value / 100;
 });
-document.getElementById("mirrorTool").addEventListener("click", e => {
-  mirrored = !mirrored;
-  video.classList.toggle("mirrored", mirrored);
-  overlay.classList.toggle("mirrored", mirrored);
-  e.currentTarget.classList.toggle("on", mirrored);
-  LENS.setMirrored(mirrored);
-  if (XRAY && XRAY.isReady()) XRAY.setMirrored(mirrored);
-  if (HAND && HAND.isReady()) HAND.setMirrored(mirrored);
-});
+document.getElementById("mirrorTool").addEventListener("click", () => appliquerMiroir(!mirrored));
 
 /* ------------------------------------------------- Moteur 3D (Ada) ------
    Chargé à la demande : three.js + les modèles pèsent ~14 Mo, inutile de les
@@ -580,13 +572,26 @@ async function startCamera() {
     statusEl.textContent = "Caméra indisponible (" + e.name + ") — sur téléphone, l'accès caméra exige HTTPS. Essaie le mode démo.";
   }
 }
-async function switchCamera() {
-  if (demoMode) return;
-  facing = facing === "user" ? "environment" : "user";
-  mirrored = facing === "user";
+/* Un seul endroit pour propager le mode miroir, sinon on en oublie un.
+   C'est précisément ce qui s'est passé : changer de caméra basculait `mirrored`
+   pour la vidéo et le SVG, mais ne le disait NI au moteur 3D NI au module main.
+   Les os étaient donc calculés dans un repère inversé par rapport à l'image —
+   d'où « en caméra arrière les mains sont complètement perdues ». */
+function appliquerMiroir(m) {
+  mirrored = m;
   video.classList.toggle("mirrored", mirrored);
   overlay.classList.toggle("mirrored", mirrored);
   document.getElementById("mirrorTool").classList.toggle("on", mirrored);
+  LENS.setMirrored(mirrored);
+  if (XRAY && XRAY.isReady()) XRAY.setMirrored(mirrored);
+  if (HAND && HAND.isReady()) HAND.setMirrored(mirrored);
+}
+
+async function switchCamera() {
+  if (demoMode) return;
+  facing = facing === "user" ? "environment" : "user";
+  // Caméra avant = miroir (on se regarde) ; caméra arrière = vue directe.
+  appliquerMiroir(facing === "user");
   await startCamera();
 }
 
@@ -661,17 +666,28 @@ function setDemoDims() {
 
 function fitFrame() {
   const { w: ww, h: wh } = viewport();
-  // Caméra : « cover » — l'image remplit l'écran (un miroir ne laisse pas de
-  // bandes noires). Démo : « contain » — le mannequin reste entier.
-  const scale = demoMode
-    ? Math.min(ww / dims.W, wh / dims.H)
-    : Math.max(ww / dims.W, wh / dims.H);
+
+  /* « contain » dans tous les cas. J'avais mis « cover » pour la caméra, pour
+     remplir l'écran sans bandes noires — mauvaise idée sur deux plans :
+       — ça ROGNE les côtés, donc il faut reculer davantage pour tenir dans le
+         cadre, ce qui aggravait le « il faut tenir le téléphone trop loin » ;
+       — dès que le cadre et l'image ne partagent plus exactement le même
+         rapport, l'anatomie s'étire, et le chef l'a vu : « tout est compressé
+         sur l'axe vertical ».
+     Des bandes noires valent mieux qu'une image fausse. */
+  const scale = Math.min(ww / dims.W, wh / dims.H);
   frame.style.width  = (dims.W * scale) + "px";
   frame.style.height = (dims.H * scale) + "px";
   overlay.setAttribute("viewBox", `0 0 ${dims.W} ${dims.H}`);
   LENS.setDims(dims);
-  if (XRAY && XRAY.isReady()) XRAY.setDims(dims);
-  if (HAND && HAND.isReady()) HAND.setDims(dims);
+
+  /* Les moteurs 3D se dimensionnent sur la taille RENDUE du canvas. Il faut
+     donc les prévenir APRÈS que le navigateur a appliqué la nouvelle taille du
+     cadre, sinon ils mesurent l'ancienne — ou zéro — et l'image sort déformée. */
+  requestAnimationFrame(() => {
+    if (XRAY && XRAY.isReady()) XRAY.setDims(dims);
+    if (HAND && HAND.isReady()) HAND.setDims(dims);
+  });
 }
 function onResize() {
   if (demoMode) setDemoDims();
