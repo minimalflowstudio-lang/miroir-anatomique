@@ -137,7 +137,7 @@ async function loadHandAssets() {
    qu'un calque posé sur la peau. */
 
 let rt = null, quadScene = null, quadCam = null, composeMat = null;
-let maskTex = null, maskSource = null;
+let maskTex = null, maskSource = null, videoTex = null;
 
 const COMPOSE_VERT = `
 varying vec2 vUv;
@@ -146,7 +146,8 @@ void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 const COMPOSE_FRAG = `
 precision mediump float;
 varying vec2 vUv;
-uniform sampler2D tScene, tDepth, tMask;
+uniform sampler2D tScene, tDepth, tMask, tVideo;
+uniform float uVideoOn, uSeeThrough;
 uniform vec3  uLens;
 uniform float uFeather, uLensOn, uMaskOn, uMirror, uDepthOn;
 uniform vec2  uDepthRange;
@@ -161,6 +162,8 @@ float pr_occlusion(sampler2D t, vec2 u, vec2 x) { return 0.0; }
 vec3 pr_grain(vec3 c, vec2 f, float t, float a) { return c; }
 vec3 pr_grade(vec3 c, vec3 t, float e) { return c; }
 vec3 pr_toSRGB(vec3 c) { return pow(clamp(c, 0.0, 1.0), vec3(1.0 / 2.2)); }
+vec3 pr_seeThrough(vec3 b, vec3 s, float d, float a) { return b; }
+vec3 pr_matter(vec3 c, vec2 uv, float a) { return c; }
 `) + `
 void main() {
   vec4 c = texture2D(tScene, vUv);
@@ -185,6 +188,18 @@ void main() {
     float graze = pr_grazing(tDepth, vUv, uTexel);
     c.a *= mix(1.0, 1.0 - 0.55 * graze, uRealism);
     c.rgb = mix(c.rgb, c.rgb * 0.75, graze * uRealism);
+
+    // variation de matière : sans elle, la couleur unie reste un aplat
+    c.rgb = pr_matter(c.rgb, vUv, 0.22 * uRealism);
+
+    /* Os vus À TRAVERS la peau filmée, et non peints dessus. */
+    if (uVideoOn > 0.5 && uSeeThrough > 0.01) {
+      vec2 vuv = vec2(uMirror > 0.5 ? 1.0 - vUv.x : vUv.x, 1.0 - vUv.y);
+      vec3 skin = texture2D(tVideo, vuv).rgb;
+      float d01 = clamp((texture2D(tDepth, vUv).r - uDepthRange.x) /
+                        max(uDepthRange.y - uDepthRange.x, 1e-4), 0.0, 1.0);
+      c.rgb = pr_seeThrough(c.rgb, skin, d01, uSeeThrough * uRealism);
+    }
 
     // teinte et exposition de la pièce, puis grain du capteur
     c.rgb = mix(c.rgb, pr_grade(c.rgb, uTint, uExposure), uRealism);
@@ -229,8 +244,20 @@ function buildCompose() {
       uTint: { value: new THREE.Vector3(1, 1, 1) },
       uExposure: { value: 1 }, uGrain: { value: 0.035 },
       uTime: { value: 0 }, uRealism: { value: 1 },
+      tVideo: { value: null }, uVideoOn: { value: 0 },
+      uSeeThrough: { value: 0.75 },
     },
   });
+
+  /* L'image caméra sert de « peau » : l'anatomie est vue à travers elle. */
+  if (videoEl && videoEl.tagName === "VIDEO") {
+    videoTex = new THREE.VideoTexture(videoEl);
+    videoTex.minFilter = THREE.LinearFilter;
+    videoTex.magFilter = THREE.LinearFilter;
+    if ("colorSpace" in videoTex) videoTex.colorSpace = THREE.SRGBColorSpace;
+    composeMat.uniforms.tVideo.value = videoTex;
+    composeMat.uniforms.uVideoOn.value = 1;
+  }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(
     new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
@@ -527,6 +554,12 @@ window.MIROIR_HAND = {
   pick,
   /* intégration photographique : 0 = rendu neutre, 1 = accordé à l'image */
   setRealism(v) { realism = Math.min(Math.max(v, 0), 1); render(); },
+  /* Dosage du « vu à travers la peau » : 0 = anatomie posée par-dessus,
+     1 = entièrement fondue dans l'image filmée. */
+  setSeeThrough(v) {
+    if (composeMat) composeMat.uniforms.uSeeThrough.value = Math.min(Math.max(v, 0), 1);
+    render();
+  },
   getLighting: () => (analyzer ? analyzer.state : null),
   /* extras Ada : */
   render,

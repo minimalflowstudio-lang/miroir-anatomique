@@ -158,6 +158,30 @@ vec3 pr_toSRGB(vec3 c) {
              step(vec3(0.0031308), c));
 }
 
+/* Fusion « vu à travers la peau ».
+   Poser l'anatomie en opaque par-dessus l'image donne un autocollant : c'est
+   la raison profonde de l'effet « dessin ». Un tissu réel vu par transparence
+   garde la LUMINOSITÉ de la peau devant lui et n'en change que le contenu.
+   On recompose donc l'os en conservant l'ombrage local de la peau, avec un
+   voile de diffusion d'autant plus fort que la structure est profonde. */
+vec3 pr_seeThrough(vec3 bone, vec3 skin, float depth01, float amount) {
+  float skinL = dot(skin, vec3(0.299, 0.587, 0.114));
+  /* l'os reprend l'éclairage de la peau : c'est ce qui l'ancre dans l'image */
+  vec3 lit = bone * (0.55 + 0.85 * skinL);
+  /* diffusion : plus c'est profond, plus la peau brouille et rougit */
+  vec3 haze = mix(skin, skin * vec3(1.12, 0.86, 0.80), 0.5);
+  vec3 seen = mix(lit, haze, clamp(depth01 * 0.55, 0.0, 0.55));
+  return mix(bone, seen, amount);
+}
+
+/* Variation de matière : un os réel n'a pas une teinte parfaitement uniforme.
+   Sans ce grain de surface, la couleur unie lit comme un aplat de dessin. */
+vec3 pr_matter(vec3 c, vec2 uv, float amount) {
+  float n = pr_hash(floor(uv * 420.0)) * 0.6
+          + pr_hash(floor(uv * 130.0)) * 0.4;
+  return c * (1.0 - amount * 0.5 + amount * n);
+}
+
 /* Accorde le rendu à la teinte et à l'exposition de l'image filmée. */
 vec3 pr_grade(vec3 c, vec3 tint, float exposure) {
   /* On teinte à 45 % seulement : au-delà, une lumière chaude virait l'os à

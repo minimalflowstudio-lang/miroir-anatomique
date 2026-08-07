@@ -297,7 +297,7 @@ function setLens(l) {
    Sans silhouette disponible, seule la lentille s'applique. */
 
 let rt = null, quadScene = null, quadCam = null, composeMat = null;
-let maskTex = null, maskSource = null;
+let maskTex = null, maskSource = null, videoTex = null;
 
 const COMPOSE_VERT = `
 varying vec2 vUv;
@@ -306,18 +306,20 @@ void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 const COMPOSE_FRAG = `
 precision mediump float;
 varying vec2 vUv;
-uniform sampler2D tScene, tMask, tDepth;
+uniform sampler2D tScene, tMask, tDepth, tVideo;
 uniform vec2  uRes, uTexel;
 uniform vec3  uLens;        // centre x, y (px device) et rayon
 uniform vec3  uTint;
 uniform float uFeather, uLensOn, uMaskOn, uMirror;
-uniform float uExposure, uGrain, uTime, uRealism;
+uniform float uExposure, uGrain, uTime, uRealism, uVideoOn, uSeeThrough;
 ` + (window.MIROIR_PHOTOREAL ? window.MIROIR_PHOTOREAL.GLSL : `
 float pr_grazing(sampler2D t, vec2 u, vec2 x) { return 0.0; }
 float pr_occlusion(sampler2D t, vec2 u, vec2 x) { return 0.0; }
 vec3 pr_grain(vec3 c, vec2 f, float t, float a) { return c; }
 vec3 pr_grade(vec3 c, vec3 t, float e) { return c; }
 vec3 pr_toSRGB(vec3 c) { return pow(clamp(c, 0.0, 1.0), vec3(1.0 / 2.2)); }
+vec3 pr_seeThrough(vec3 b, vec3 s, float d, float a) { return b; }
+vec3 pr_matter(vec3 c, vec2 uv, float a) { return c; }
 `) + `
 void main() {
   vec4 c = texture2D(tScene, vUv);
@@ -328,6 +330,20 @@ void main() {
     float graze = pr_grazing(tDepth, vUv, uTexel);
     c.a *= mix(1.0, 1.0 - 0.55 * graze, uRealism);
     c.rgb = mix(c.rgb, c.rgb * 0.75, graze * uRealism);
+
+    // variation de matière : sans elle, la couleur unie reste un aplat
+    c.rgb = pr_matter(c.rgb, vUv, 0.22 * uRealism);
+
+    /* Vu À TRAVERS la peau, et non posé dessus : l'os reprend l'éclairage
+       local de l'image et se voile avec la profondeur. C'est le point qui
+       sépare « autocollant » de « on voit dedans ». */
+    if (uVideoOn > 0.5 && uSeeThrough > 0.01) {
+      vec2 vuv = vec2(uMirror > 0.5 ? 1.0 - vUv.x : vUv.x, 1.0 - vUv.y);
+      vec3 skin = texture2D(tVideo, vuv).rgb;
+      float d01 = clamp(texture2D(tDepth, vUv).r * 2.0 - 0.9, 0.0, 1.0);
+      c.rgb = pr_seeThrough(c.rgb, skin, d01, uSeeThrough * uRealism);
+    }
+
     c.rgb = mix(c.rgb, pr_grade(c.rgb, uTint, uExposure), uRealism);
     c.rgb = pr_grain(c.rgb, gl_FragCoord.xy, uTime, uGrain * uRealism);
   }
@@ -372,8 +388,21 @@ function buildCompose() {
       uMaskOn: { value: 0 }, uMirror: { value: 1 },
       uExposure: { value: 1 }, uGrain: { value: 0.035 },
       uTime: { value: 0 }, uRealism: { value: 1 },
+      tVideo: { value: null }, uVideoOn: { value: 0 },
+      uSeeThrough: { value: 0.75 },
     },
   });
+
+  /* L'image caméra sert de « peau » : elle entre dans la composition pour que
+     l'anatomie soit vue à travers elle, pas peinte dessus. */
+  if (videoEl && videoEl.tagName === "VIDEO") {
+    videoTex = new THREE.VideoTexture(videoEl);
+    videoTex.minFilter = THREE.LinearFilter;
+    videoTex.magFilter = THREE.LinearFilter;
+    if ("colorSpace" in videoTex) videoTex.colorSpace = THREE.SRGBColorSpace;
+    composeMat.uniforms.tVideo.value = videoTex;
+    composeMat.uniforms.uVideoOn.value = 1;
+  }
   // triangle plein écran (moins de fragments qu'un quad, et pas de couture)
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(
@@ -435,7 +464,7 @@ function update(res) {
 
   /* ---- Régions Z-Anatomy : transformation rigide segment→segment ---- */
   if (regions.length) {
-    poseRegions(place3, ppm);
+    poseRegions(place3, ppm, shPx);
     // les primitives de repli s'effacent dès que la vraie géométrie est là
     for (const pc of pieces) pc.mesh.visible = false;
     render();
@@ -526,7 +555,32 @@ function fitSegment(mesh, aR, bR, aT, bT) {
   mesh.matrixWorldNeedsUpdate = true;
 }
 
-function poseRegions(place3, ppm) {
+/* Seuil de confiance. MediaPipe ne renvoie pas « je ne sais pas » : quand un
+   membre sort du cadre, il EXTRAPOLE sa position avec une confiance moyenne.
+   À 0,45 on acceptait ces inventions, et les os des jambes partaient n'importe
+   où dès que le chef s'approchait de la caméra. */
+const VIS_MIN = 0.72;
+
+/* Marge hors cadre tolérée, en fraction de l'image. Au-delà, le point est
+   presque sûrement extrapolé. */
+const OUT_MARGIN = 0.12;
+
+function inFrame(v) {
+  return v.x > -OUT_MARGIN * dims.W && v.x < dims.W * (1 + OUT_MARGIN) &&
+         -v.y > -OUT_MARGIN * dims.H && -v.y < dims.H * (1 + OUT_MARGIN);
+}
+
+/* Longueur plausible d'un segment, rapportée à la largeur d'épaules. Un
+   avant-bras plus long que deux fois la largeur d'épaules n'existe pas :
+   c'est un landmark aberrant, on masque plutôt que de dessiner un os étiré
+   à travers l'écran. */
+function plausible(lenPx, shoulderPx) {
+  if (shoulderPx < 4) return true;          // pas d'échelle fiable : on laisse
+  const r = lenPx / shoulderPx;
+  return r > 0.05 && r < 2.4;
+}
+
+function poseRegions(place3, ppm, shoulderPx) {
   /* Transformation « corps » : haut du torse → centre du bassin, d'après les
      landmarks. Sert aux régions solidaires du tronc (tête, cou, torse, bassin). */
   let bodyOk = false;
@@ -535,7 +589,8 @@ function poseRegions(place3, ppm) {
     _aT.addVectors(_p1, _p2).multiplyScalar(0.5);
     const v23 = place3(23, _p1), v24 = place3(24, _p2);
     _bT.addVectors(_p1, _p2).multiplyScalar(0.5);
-    bodyOk = v11 > 0.45 && v12 > 0.45 && v23 > 0.45 && v24 > 0.45;
+    bodyOk = v11 > VIS_MIN && v12 > VIS_MIN && v23 > VIS_MIN && v24 > VIS_MIN
+             && inFrame(_aT) && inFrame(_bT);
   }
 
   for (const r of regions) {
@@ -549,7 +604,14 @@ function poseRegions(place3, ppm) {
     } else {
       const va = place3(r.bind.a, _p1);
       const vb = place3(r.bind.b, _p2);
-      if (va < 0.45 || vb < 0.45) { r.mesh.visible = false; continue; }
+      /* Trois garde-fous : confiance, présence dans le cadre, longueur
+         plausible. Sans eux, un membre hors champ produit un os étiré en
+         travers de l'image — c'est ce que le chef voyait comme « des bugs ». */
+      if (va < VIS_MIN || vb < VIS_MIN ||
+          !inFrame(_p1) || !inFrame(_p2) ||
+          !plausible(_p1.distanceTo(_p2), shoulderPx)) {
+        r.mesh.visible = false; continue;
+      }
       r.mesh.visible = true;
       fitSegment(r.mesh, r.aRest, r.bRest, _p1, _p2);
     }
@@ -692,6 +754,12 @@ window.MIROIR_XRAY = {
   pick, loadParts,
   /* intégration photographique : 0 = rendu neutre, 1 = accordé à l'image */
   setRealism(v) { realism = Math.min(Math.max(v, 0), 1); render(); },
+  /* Dosage du « vu à travers la peau » : 0 = anatomie posée par-dessus,
+     1 = entièrement fondue dans l'image filmée. */
+  setSeeThrough(v) {
+    if (composeMat) composeMat.uniforms.uSeeThrough.value = Math.min(Math.max(v, 0), 1);
+    render();
+  },
   getLighting: () => (analyzer ? analyzer.state : null),
   /* extras Ada : */
   loadLayer, render,
