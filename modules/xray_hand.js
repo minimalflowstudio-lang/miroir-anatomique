@@ -74,6 +74,13 @@ async function init(ctx) {
   await loadHandAssets();
 
   applyDims();
+  /* La taille CSS du canvas peut changer APRES setDims (cadrage appliqué par
+     le navigateur au rAF suivant) : le repli sur clientWidth prendrait alors
+     une valeur périmée et l'image sortirait déformée. L'observateur
+     resynchronise dès que la taille réelle change. */
+  if (window.ResizeObserver) {
+    new ResizeObserver(() => { if (ready) { applyDims(); render(); } }).observe(canvas);
+  }
   ready = true;
   progress("prêt", 1);
 }
@@ -449,10 +456,14 @@ function normalizeHandedness(h, n) {
     else if (e && e.categoryName) label = e.categoryName;
     else if (Array.isArray(e) && e[0]) label = e[0].categoryName || e[0].displayName;
     const s = (label || "").toLowerCase();
-    /* Image en miroir : MediaPipe annonce « Left » pour la main droite du
-       sujet vue dans un miroir. On garde l'étiquette telle quelle et on
-       laisse setMirrored gérer l'affichage. */
-    out.push(s.startsWith("r") ? "r" : "l");
+    /* MediaPipe étiquette la latéralité en SUPPOSANT une image miroir
+       (selfie). Caméra avant + affichage miroir : étiquette correcte telle
+       quelle. Caméra ARRIÈRE (pas de miroir) : l'étiquette est inversée par
+       rapport à la réalité — on la retourne. C'était la « limite non
+       vérifiée » signalée dès la livraison du module. */
+    let right = s.startsWith("r");
+    if (!mirrored) right = !right;
+    out.push(right ? "r" : "l");
   }
   return out;
 }

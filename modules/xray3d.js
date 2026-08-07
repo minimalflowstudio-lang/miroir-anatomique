@@ -86,6 +86,13 @@ async function init(ctx) {
   buildSkeletonPlaceholder();
 
   applyDims();
+  /* La taille CSS du canvas peut changer APRES setDims (cadrage appliqué par
+     le navigateur au rAF suivant) : le repli sur clientWidth prendrait alors
+     une valeur périmée et l'image sortirait déformée. L'observateur
+     resynchronise dès que la taille réelle change. */
+  if (window.ResizeObserver) {
+    new ResizeObserver(() => { if (ready) { applyDims(); render(); } }).observe(canvas);
+  }
   ready = true;
   progress("prêt", 1);
 }
