@@ -849,7 +849,19 @@ function setTransition(from, to, t) {
   render();
 }
 
-function clearTransition() { transition = null; render(); }
+/* Interrompre un fondu (la règle du chef : toucher un bouton coupe
+   l'automatisme) doit trancher pour UNE couche — la dominante au moment de
+   l'arrêt. Sans cela, les deux restaient allumées et s'affichaient
+   superposées en entier dès que le front disparaissait. */
+function clearTransition() {
+  if (transition) {
+    const { from, to, t } = transition;
+    if (from && groups[from]) groups[from].visible = t < 0.5;
+    if (to && groups[to]) groups[to].visible = t >= 0.5;
+  }
+  transition = null;
+  render();
+}
 
 /* Rayon du front, en pixels du canvas. À t=0 il est nul (rien de l'entrante),
    à t=1 il dépasse la diagonale (plus rien de la sortante). */
