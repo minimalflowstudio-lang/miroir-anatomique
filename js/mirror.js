@@ -190,6 +190,8 @@ function updateHud() {
   document.getElementById("lensState").textContent =
     (xrayOn ? (hybride ? "3D réelle + schéma" : "3D réelle") : "schéma") +
     (handOn ? " · MAIN" + (lentilleSuitLaMain ? " (lentille auto)" : "") : "") +
+    (GROS_PLAN.head.visible ? " · tête détaillée" : "") +
+    (GROS_PLAN.arm.visible ? " · bras détaillé" : "") +
     (LENS.isEnabled() ? " · lentille ON" : " · lentille OFF") +
     (SEG.isEnabled() ? " · silhouette ON" : "");
 }
@@ -680,6 +682,53 @@ function loop() {
   }
   requestAnimationFrame(loop);
 }
+/* ------------------------------------------------- Surcouches gros plan --
+   La tête et le bras existent en pleine définition, mais pèsent lourd (6,6 Mo
+   pour la tête). On ne les charge donc que lorsqu'on s'en approche vraiment.
+
+   Deux seuils par structure, et non un seul : on PRÉCHARGE bien avant
+   d'AFFICHER, pour que le téléchargement soit fini quand l'utilisateur arrive.
+   Et le seuil de sortie est plus bas que celui d'entrée, sinon la surcouche
+   clignoterait à la moindre oscillation. */
+const GROS_PLAN = {
+  head: { precharge: 0.15, entre: 0.21, sort: 0.17, chargee: false, visible: false },
+  arm:  { precharge: 0.26, entre: 0.36, sort: 0.30, chargee: false, visible: false }
+};
+
+function tailleRelative(a, b) {
+  const pa = PTS[a], pb = PTS[b];
+  if (!vis(pa) || !vis(pb)) return null;
+  return Math.hypot(pb.x - pa.x, pb.y - pa.y) / Math.min(dims.W, dims.H);
+}
+
+function gererGrosPlan() {
+  if (!xrayOn || !XRAY || !PTS) return;
+
+  // La tête se mesure à l'écart des oreilles, l'avant-bras du coude au poignet.
+  evaluer("head", tailleRelative(7, 8));
+  evaluer("arm", Math.max(tailleRelative(14, 16) ?? 0, tailleRelative(13, 15) ?? 0) || null);
+}
+
+function evaluer(cle, taille) {
+  const g = GROS_PLAN[cle];
+  if (taille === null) return;
+
+  if (!g.chargee && taille > g.precharge) {
+    g.chargee = true;                       // une seule fois
+    XRAY.loadLayer?.(cle);
+    detectEl.textContent = "Préparation du détail…";
+  }
+  if (!g.visible && taille > g.entre) {
+    g.visible = true;
+    XRAY.setLayer(cle, true);
+    updateHud();
+  } else if (g.visible && taille < g.sort) {
+    g.visible = false;
+    XRAY.setLayer(cle, false);
+    updateHud();
+  }
+}
+
 /* Transmet au moteur 3D la pose, la lentille et la silhouette. */
 function feed3D(res) {
   if (!xrayOn || !XRAY) return;
@@ -730,6 +779,7 @@ function update(raw) {
       }
     }
   }
+  gererGrosPlan();
   window.MIROIR_ENGINE.onFrame();
 }
 
