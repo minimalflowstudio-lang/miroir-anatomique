@@ -236,7 +236,21 @@ function updateHud() {
                  : XRAY.isReady() ? (xrayOn ? "3D ACTIVE" : "prêt mais éteint")
                  : "non initialisé";
     const os = XRAY && XRAY.hasAssets ? (XRAY.hasAssets("bones") ? "oui" : "non") : "?";
-    d.textContent = "moteur " + moteur + " · modèle os " + os;
+
+    /* Combien de points du corps sont réellement exploitables, et quels
+       repères ont pu être construits. C'est ce qui manque pour comprendre
+       « je ne vois rien quand je m'approche » : si les hanches sortent du
+       cadre, le repère du tronc peut ne plus se construire. */
+    let pts = "—", reperes = "—";
+    if (PTS) {
+      pts = PTS.filter(p => vis(p)).length + "/33";
+      const r = [];
+      if (FRAMES.head) r.push("tête");
+      if (FRAMES.torso) r.push("tronc");
+      if (FRAMES.pelvis) r.push("bassin");
+      reperes = r.length ? r.join("+") : "AUCUN";
+    }
+    d.textContent = "moteur " + moteur + " · os " + os + " · points " + pts + " · repères " + reperes;
   }
   const hybride = xrayOn && LAYER_META.some(m => active[m.key] && !COUVERTURE_3D[m.key]);
   document.getElementById("lensState").textContent =
