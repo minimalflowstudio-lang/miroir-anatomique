@@ -5,7 +5,7 @@
 
 /* ⚠️ Incrémenter CACHE à CHAQUE mise en ligne : sinon les téléphones qui ont
    déjà chargé l'app gardent l'ancienne version. */
-const CACHE = "miroir-v20";
+const CACHE = "miroir-v21";
 const CORE = [
   "./",
   "./index.html",
@@ -44,13 +44,22 @@ self.addEventListener("fetch", e => {
   if (req.method !== "GET") return;
 
   const url = new URL(req.url);
-  const isModel = url.hostname.includes("jsdelivr.net")
-               || url.hostname.includes("storage.googleapis.com")
-               || url.pathname.includes("/assets/anatomy/")   // les .glb, lourds et figés
-               || url.pathname.includes("/modules/");
 
-  // Modèle et runtime MediaPipe : cache d'abord (gros fichiers, jamais modifiés)
-  if (isModel) {
+  /* Cache d'abord UNIQUEMENT ce qui est réellement figé : le runtime MediaPipe,
+     ses modèles, et nos .glb anatomiques. Ces fichiers ne changent jamais à
+     contenu égal, et ils sont lourds.
+
+     ⚠️ `/modules/` était rangé ici par erreur (repéré par Turing). Nos modules
+     JS ne sont PAS figés : Ada les corrige plusieurs fois par jour. En
+     cache-d'abord, sa correction n'aurait jamais atteint le téléphone du chef
+     si j'oubliais d'incrémenter le `?v=` d'index.html — et on aurait cherché
+     le bug dans le code, pas dans le cache. Ils passent donc en réseau-d'abord
+     comme le reste de l'app. */
+  const estFige = url.hostname.includes("jsdelivr.net")
+               || url.hostname.includes("storage.googleapis.com")
+               || url.pathname.includes("/assets/anatomy/");
+
+  if (estFige) {
     e.respondWith(
       caches.match(req).then(hit => hit || fetch(req).then(res => {
         const copy = res.clone();

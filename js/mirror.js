@@ -866,21 +866,37 @@ function tickFps(now, suffix) {
   if (now - fpsT > 1000) {
     fpsEl.textContent = frames + " i/s" + suffix;
     frames = 0; fpsT = now;
-    updateHud();   // le diagnostic doit refléter l'état courant, pas celui du démarrage
   }
 }
+
+/* Le diagnostic tourne sur son PROPRE minuteur, pas sur la boucle de rendu :
+   si celle-ci se bloque — onglet en arrière-plan, GPU perdu, moteur planté —
+   c'est exactement le moment où l'on a besoin de lire l'état, et un diagnostic
+   figé sur la dernière image utile ne sert à rien. */
+setInterval(() => { try { updateHud(); } catch {} }, 1000);
 
 function hideAll() {
   for (const key of LAYER_ORDER)
     for (const p of groups[key].pieces) p.node.setAttribute("visibility", "hidden");
 }
 
+/* Quand le corps disparaît du cadre, c'est le plus souvent qu'on s'est
+   approché — donc exactement le moment où le mode main sert. On le signale au
+   lieu de laisser l'écran vide, mais on ne le déclenche PAS tout seul : le
+   modèle de main pèse plusieurs mégaoctets, on ne l'impose pas sans un geste. */
+let sansCorpsDepuis = 0;
+
 function update(raw) {
   if (!raw) {
     hideAll(); smooth = null; PTS = null;
-    detectEl.textContent = "Personne non détectée — recule pour être vu en entier.";
+    if (!sansCorpsDepuis) sansCorpsDepuis = performance.now();
+    const perdu = performance.now() - sansCorpsDepuis;
+    detectEl.textContent = (perdu > 2500 && !handOn && HAND)
+      ? "Trop près pour le corps entier — touche ✋ pour voir les os de ta main."
+      : "Personne non détectée — recule pour être vu en entier.";
     return;
   }
+  sansCorpsDepuis = 0;
   const lm = smoothLandmarks(raw);
   PTS = lm.map(p => ({ x: p.x * dims.W, y: p.y * dims.H, visibility: p.visibility }));
   detectEl.textContent = "Détection active ✓";
