@@ -88,8 +88,12 @@
 <script src="js/segment.js?v=17" defer></script>
 <script src="js/terms.js?v=17" defer></script>
 <script src="js/labels.js?v=17" defer></script>
-<script src="modules/xray3d.js?v=17" defer></script>
-<script src="modules/xray_hand.js?v=17" defer></script>
+<!-- photoreal.js AVANT les deux moteurs 3D : ils lisent ses fonctions GLSL
+     au moment de construire leurs shaders. Sans lui ils tournent quand même,
+     mais sans l'éclairage accordé à l'image filmée. -->
+<script src="modules/photoreal.js?v=18" defer></script>
+<script src="modules/xray3d.js?v=18" defer></script>
+<script src="modules/xray_hand.js?v=18" defer></script>
 <script src="js/firstaid.js?v=17" defer></script>
 <script src="js/mirror.js?v=17" defer></script>
 <script>

@@ -18,7 +18,9 @@ const THREE_CDN_EXAMPLES = "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/
 const LAYER_KEYS = ["bones", "muscles", "nerves", "organs", "vessels"];
 
 let THREE = null;
-let renderer = null, scene = null, camera = null, dirLight = null;
+let renderer = null, scene = null, camera = null, dirLight = null, hemiLight = null;
+let analyzer = null;                  // mesure de l'éclairage réel (photoreal.js)
+let realism = 1;                      // 0 = rendu neutre, 1 = intégration complète
 let canvas = null, videoEl = null;
 let ready = false;
 let dims = { W: 1280, H: 720 };
@@ -51,10 +53,14 @@ async function init(ctx) {
 
   /* Éclairage : ciel doux + directionnelle haut-gauche. (v1 : orienter la
      directionnelle sur la dominante lumineuse de l'image vidéo.) */
-  scene.add(new THREE.HemisphereLight(0xcfe0ee, 0x1a2530, 0.85));
+  /* Point de départ seulement : l'éclairage est réaccordé à chaque image sur
+     celui mesuré dans l'image filmée (voir photoreal.js). */
+  hemiLight = new THREE.HemisphereLight(0xcfe0ee, 0x1a2530, 0.85);
+  scene.add(hemiLight);
   dirLight = new THREE.DirectionalLight(0xffffff, 1.4);
   dirLight.position.set(-0.4, 0.8, 1.0);
   scene.add(dirLight);
+  if (window.MIROIR_PHOTOREAL) analyzer = window.MIROIR_PHOTOREAL.createAnalyzer();
 
   for (const key of LAYER_KEYS) {
     groups[key] = new THREE.Group();
@@ -119,9 +125,10 @@ async function loadLayer(key, onProgress) {
      seul matériau suffit pour toute une région, et les organes restent
      distinguables. `color` blanc pour ne pas teinter l'attribut. */
   const mat = new THREE.MeshStandardMaterial({
-    color: 0xffffff, roughness: 0.55, metalness: 0.05,
+    color: 0xffffff, roughness: 0.92, metalness: 0.0,
     transparent: true, opacity, vertexColors: true,
   });
+  if ("envMapIntensity" in mat) mat.envMapIntensity = 0;
 
   /* Une région jointe ressort en plusieurs primitives glTF (une par matériau),
      nommées « région », « région_1 », « région_2 »… et l'exportateur RETIRE
@@ -299,13 +306,31 @@ void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 const COMPOSE_FRAG = `
 precision mediump float;
 varying vec2 vUv;
-uniform sampler2D tScene, tMask;
-uniform vec2  uRes;
+uniform sampler2D tScene, tMask, tDepth;
+uniform vec2  uRes, uTexel;
 uniform vec3  uLens;        // centre x, y (px device) et rayon
+uniform vec3  uTint;
 uniform float uFeather, uLensOn, uMaskOn, uMirror;
-
+uniform float uExposure, uGrain, uTime, uRealism;
+` + (window.MIROIR_PHOTOREAL ? window.MIROIR_PHOTOREAL.GLSL : `
+float pr_grazing(sampler2D t, vec2 u, vec2 x) { return 0.0; }
+float pr_occlusion(sampler2D t, vec2 u, vec2 x) { return 0.0; }
+vec3 pr_grain(vec3 c, vec2 f, float t, float a) { return c; }
+vec3 pr_grade(vec3 c, vec3 t, float e) { return c; }
+vec3 pr_toSRGB(vec3 c) { return pow(clamp(c, 0.0, 1.0), vec3(1.0 / 2.2)); }
+`) + `
 void main() {
   vec4 c = texture2D(tScene, vUv);
+
+  if (uRealism > 0.01 && c.a > 0.002) {
+    float ao = pr_occlusion(tDepth, vUv, uTexel);
+    c.rgb *= mix(1.0, 1.0 - 0.45 * ao, uRealism);
+    float graze = pr_grazing(tDepth, vUv, uTexel);
+    c.a *= mix(1.0, 1.0 - 0.55 * graze, uRealism);
+    c.rgb = mix(c.rgb, c.rgb * 0.75, graze * uRealism);
+    c.rgb = mix(c.rgb, pr_grade(c.rgb, uTint, uExposure), uRealism);
+    c.rgb = pr_grain(c.rgb, gl_FragCoord.xy, uTime, uGrain * uRealism);
+  }
 
   if (uLensOn > 0.5) {
     float d = distance(gl_FragCoord.xy, uLens.xy);
@@ -318,7 +343,9 @@ void main() {
     c *= texture2D(tMask, muv).r;
   }
 
-  gl_FragColor = c;   // alpha prémultiplié : la multiplication reste correcte
+  /* Retour en sRGB : la cible hors écran est en lumière linéaire.
+     L'alpha prémultiplié rend les multiplications ci-dessus correctes. */
+  gl_FragColor = vec4(pr_toSRGB(c.rgb), c.a);
 }`;
 
 function buildCompose() {
@@ -326,15 +353,25 @@ function buildCompose() {
     minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
     format: THREE.RGBAFormat, depthBuffer: true,
   });
+  /* Texture de profondeur : indispensable à l'occlusion de contact et au
+     fondu des bords fuyants (voir photoreal.js). */
+  rt.depthTexture = new THREE.DepthTexture();
+  rt.depthTexture.type = THREE.UnsignedShortType;
+
   composeMat = new THREE.ShaderMaterial({
     vertexShader: COMPOSE_VERT, fragmentShader: COMPOSE_FRAG,
     transparent: true, depthTest: false, depthWrite: false,
     uniforms: {
       tScene: { value: rt.texture }, tMask: { value: null },
+      tDepth: { value: rt.depthTexture },
       uRes: { value: new THREE.Vector2(1, 1) },
+      uTexel: { value: new THREE.Vector2(1 / 512, 1 / 512) },
       uLens: { value: new THREE.Vector3(0, 0, 0) },
+      uTint: { value: new THREE.Vector3(1, 1, 1) },
       uFeather: { value: 30 }, uLensOn: { value: 0 },
       uMaskOn: { value: 0 }, uMirror: { value: 1 },
+      uExposure: { value: 1 }, uGrain: { value: 0.035 },
+      uTime: { value: 0 }, uRealism: { value: 1 },
     },
   });
   // triangle plein écran (moins de fragments qu'un quad, et pas de couture)
@@ -624,6 +661,20 @@ function render() {
     u.uLens.value.set(lx, h - lens.cy * s, lens.radius * s);
     u.uFeather.value = Math.min((lens.feather ?? 30) * s, lens.radius * s * 0.9);
   }
+  u.uTexel.value.set(1 / w, 1 / h);
+  u.uRealism.value = realism;
+  u.uTime.value = (performance.now() % 100000) / 1000;
+
+  /* Éclairage et étalonnage relevés dans l'image filmée. */
+  if (analyzer && videoEl && realism > 0.01) {
+    const st = analyzer.sample(videoEl, performance.now());
+    if (st.ready) {
+      window.MIROIR_PHOTOREAL.applyLighting(THREE, dirLight, hemiLight, st, realism);
+      u.uTint.value.set(st.color.r, st.color.g, st.color.b);
+      u.uExposure.value = 0.95 + 0.85 * Math.min(st.luma * 1.7, 1);
+      u.uGrain.value = 0.02 + 0.06 * (1 - Math.min(st.luma * 2, 1));
+    }
+  }
   if (maskTex) maskTex.needsUpdate = true;      // le canvas de silhouette a bougé
 
   renderer.setRenderTarget(rt);
@@ -639,6 +690,9 @@ window.MIROIR_XRAY = {
   init, setDims, setMirrored, update, setLayer, setOpacity, setLens, isReady,
   /* nommage des structures (voir pick) */
   pick, loadParts,
+  /* intégration photographique : 0 = rendu neutre, 1 = accordé à l'image */
+  setRealism(v) { realism = Math.min(Math.max(v, 0), 1); render(); },
+  getLighting: () => (analyzer ? analyzer.state : null),
   /* extras Ada : */
   loadLayer, render,
   hasAssets: key => !!(groups[key] && groups[key].userData.loaded),

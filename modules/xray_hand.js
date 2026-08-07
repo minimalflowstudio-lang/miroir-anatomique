@@ -24,7 +24,9 @@ let ASSETS_DIR = "assets/anatomy/";
 const WRIST = 0, INDEX_MCP = 5, MIDDLE_MCP = 9, PINKY_MCP = 17;
 
 let THREE = null;
-let renderer = null, scene = null, camera = null, dirLight = null;
+let renderer = null, scene = null, camera = null, dirLight = null, hemiLight = null;
+let analyzer = null;                  // mesure de l'éclairage réel (photoreal.js)
+let realism = 1;                      // 0 = rendu neutre, 1 = intégration complète
 let canvas = null, videoEl = null;
 let ready = false;
 let dims = { W: 1280, H: 720 };
@@ -55,10 +57,15 @@ async function init(ctx) {
   scene = new THREE.Scene();
   camera = new THREE.OrthographicCamera(0, dims.W, 0, -dims.H, -4000, 4000);
 
-  scene.add(new THREE.HemisphereLight(0xcfe0ee, 0x1a2530, 0.9));
+  /* Éclairage réaccordé à chaque image sur celui de la pièce (voir
+     photoreal.js) : c'est le premier facteur de « collé » quand on ne le
+     fait pas. Les valeurs ci-dessous ne sont que le point de départ. */
+  hemiLight = new THREE.HemisphereLight(0xcfe0ee, 0x1a2530, 0.9);
+  scene.add(hemiLight);
   dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
   dirLight.position.set(-0.4, 0.8, 1.0);
   scene.add(dirLight);
+  if (window.MIROIR_PHOTOREAL) analyzer = window.MIROIR_PHOTOREAL.createAnalyzer();
 
   buildCompose();
 
@@ -84,10 +91,16 @@ async function loadHandAssets() {
       .catch(e => console.warn("[xray_hand] nommage indisponible : " + e.message)),
   ]);
 
+  /* Matériau d'os : très rugueux et sans métal. Un `roughness` bas donnait un
+     reflet net qui lisait comme du plastique — c'est la deuxième cause de
+     l'effet « dessin animé », après l'éclairage. Le léger reflet diffus
+     restant vient de `envMapIntensity` à 0 et d'une spécularité minime. */
   baseMaterial = new THREE.MeshStandardMaterial({
-    color: 0xffffff, roughness: 0.5, metalness: 0.04,
+    color: 0xffffff, roughness: 0.92, metalness: 0.0,
     transparent: true, opacity: 1, vertexColors: true,
+    flatShading: false,
   });
+  if ("envMapIntensity" in baseMaterial) baseMaterial.envMapIntensity = 0;
 
   const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g, "");
   const found = { l: [], r: [] };
@@ -136,25 +149,50 @@ varying vec2 vUv;
 uniform sampler2D tScene, tDepth, tMask;
 uniform vec3  uLens;
 uniform float uFeather, uLensOn, uMaskOn, uMirror, uDepthOn;
-uniform vec2  uDepthRange;      // profondeur min et max de la main, en unités monde
-
+uniform vec2  uDepthRange;
+uniform vec2  uTexel;
+uniform vec3  uTint;            // teinte dominante de l'image filmée
+uniform float uExposure;        // exposition de l'image filmée
+uniform float uGrain;           // bruit du capteur
+uniform float uTime, uRealism;
+` + (window.MIROIR_PHOTOREAL ? window.MIROIR_PHOTOREAL.GLSL : `
+float pr_grazing(sampler2D t, vec2 u, vec2 x) { return 0.0; }
+float pr_occlusion(sampler2D t, vec2 u, vec2 x) { return 0.0; }
+vec3 pr_grain(vec3 c, vec2 f, float t, float a) { return c; }
+vec3 pr_grade(vec3 c, vec3 t, float e) { return c; }
+vec3 pr_toSRGB(vec3 c) { return pow(clamp(c, 0.0, 1.0), vec3(1.0 / 2.2)); }
+`) + `
 void main() {
   vec4 c = texture2D(tScene, vUv);
   if (c.a < 0.002) discard;
 
   if (uDepthOn > 0.5) {
-    // profondeur normalisée : 0 = près de la caméra, 1 = au fond
     float d = texture2D(tDepth, vUv).r;
     float t = clamp((d - uDepthRange.x) / max(uDepthRange.y - uDepthRange.x, 1e-4), 0.0, 1.0);
-    // les os du fond s'assombrissent et se désaturent légèrement
-    float shade = mix(1.0, 0.42, t);
+    /* 0,58 et non 0,42 : plus sombre, l'os perdait sa matière et le gain de
+       relief ne compensait pas la perte de luminosité. */
+    float shade = mix(1.0, 0.58, t);
     float gray = dot(c.rgb, vec3(0.299, 0.587, 0.114));
-    c.rgb = mix(c.rgb, vec3(gray), t * 0.35) * shade;
+    c.rgb = mix(c.rgb, vec3(gray), t * 0.28) * shade;
+  }
+
+  if (uRealism > 0.01) {
+    // creux entre structures : sans occlusion de contact, tout paraît plat
+    float ao = pr_occlusion(tDepth, vUv, uTexel);
+    c.rgb *= mix(1.0, 1.0 - 0.45 * ao, uRealism);
+
+    // bords fuyants estompés : l'anatomie passe SOUS la peau au lieu de s'y découper
+    float graze = pr_grazing(tDepth, vUv, uTexel);
+    c.a *= mix(1.0, 1.0 - 0.55 * graze, uRealism);
+    c.rgb = mix(c.rgb, c.rgb * 0.75, graze * uRealism);
+
+    // teinte et exposition de la pièce, puis grain du capteur
+    c.rgb = mix(c.rgb, pr_grade(c.rgb, uTint, uExposure), uRealism);
+    c.rgb = pr_grain(c.rgb, gl_FragCoord.xy, uTime, uGrain * uRealism);
   }
 
   if (uLensOn > 0.5) {
     float dist = distance(gl_FragCoord.xy, uLens.xy);
-    // bord de fenêtre assombri avant de disparaître : l'œil lit un trou, pas un calque
     float edge = smoothstep(uLens.z - uFeather * 2.0, uLens.z - uFeather, dist);
     c.rgb *= mix(1.0, 0.55, edge);
     c *= 1.0 - smoothstep(uLens.z - uFeather, uLens.z, dist);
@@ -165,7 +203,8 @@ void main() {
     c *= texture2D(tMask, muv).r;
   }
 
-  gl_FragColor = c;
+  /* Retour en sRGB : la cible hors écran est en lumière linéaire. */
+  gl_FragColor = vec4(pr_toSRGB(c.rgb), c.a);
 }`;
 
 function buildCompose() {
@@ -186,6 +225,10 @@ function buildCompose() {
       uFeather: { value: 30 }, uLensOn: { value: 0 }, uMaskOn: { value: 0 },
       uMirror: { value: 1 }, uDepthOn: { value: 1 },
       uDepthRange: { value: new THREE.Vector2(0, 1) },
+      uTexel: { value: new THREE.Vector2(1 / 512, 1 / 512) },
+      uTint: { value: new THREE.Vector3(1, 1, 1) },
+      uExposure: { value: 1 }, uGrain: { value: 0.035 },
+      uTime: { value: 0 }, uRealism: { value: 1 },
     },
   });
   const geo = new THREE.BufferGeometry();
@@ -441,9 +484,32 @@ function render() {
     u.uLens.value.set(lx, h - lens.cy * s, lens.radius * s);
     u.uFeather.value = Math.min((lens.feather ?? 30) * s, lens.radius * s * 0.9);
   }
-  /* La plage de profondeur est calée sur la main mesurée, pas sur la scène :
-     le dégradé reste lisible quelle que soit la distance au téléphone. */
-  u.uDepthRange.value.set(0, 1);
+  /* Plage de profondeur calée sur la main RÉELLEMENT mesurée, et non sur le
+     volume de la caméra : sur (0,1), toute la main tombait au milieu du
+     dégradé et ressortait uniformément assombrie — donc plate et terne.
+     Conversion monde → profondeur normalisée pour une caméra orthographique
+     dont le volume va de near=-4000 à far=+4000 (voir applyDims). */
+  const SPAN = 8000;
+  const dNear = 0.5 - depthMax / SPAN;      // z monde le plus grand = le plus proche
+  const dFar  = 0.5 - depthMin / SPAN;
+  const marge = Math.max((dFar - dNear) * 0.15, 1e-4);
+  u.uDepthRange.value.set(dNear - marge, dFar + marge);
+  u.uTexel.value.set(1 / w, 1 / h);
+  u.uRealism.value = realism;
+  u.uTime.value = (performance.now() % 100000) / 1000;
+
+  /* Éclairage et étalonnage relevés dans l'image filmée. */
+  if (analyzer && videoEl && realism > 0.01) {
+    const st = analyzer.sample(videoEl, performance.now());
+    if (st.ready) {
+      window.MIROIR_PHOTOREAL.applyLighting(THREE, dirLight, hemiLight, st, realism);
+      u.uTint.value.set(st.color.r, st.color.g, st.color.b);
+      /* Une pièce sombre doit donner une anatomie sombre. */
+      u.uExposure.value = 0.95 + 0.85 * Math.min(st.luma * 1.7, 1);
+      /* Plus l'image est sombre, plus le capteur d'un téléphone bruite. */
+      u.uGrain.value = 0.02 + 0.06 * (1 - Math.min(st.luma * 2, 1));
+    }
+  }
   if (maskTex) maskTex.needsUpdate = true;
 
   renderer.setRenderTarget(rt);
@@ -459,6 +525,9 @@ window.MIROIR_HAND = {
   init, setDims, setMirrored, update, setLens, setDepthOcclusion, isReady,
   /* nommage des structures (voir pick) */
   pick,
+  /* intégration photographique : 0 = rendu neutre, 1 = accordé à l'image */
+  setRealism(v) { realism = Math.min(Math.max(v, 0), 1); render(); },
+  getLighting: () => (analyzer ? analyzer.state : null),
   /* extras Ada : */
   render,
   handCount: () => hands.length,
