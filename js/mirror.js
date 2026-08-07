@@ -250,10 +250,17 @@ function updateHud() {
       if (FRAMES.pelvis) r.push("bassin");
       reperes = r.length ? r.join("+") : "AUCUN";
     }
-    const mode = handOn ? "MAIN" : "corps";
     const cam = facing === "user" ? "avant" : "arrière";
-    d.textContent = mode + " · cam " + cam + " · " + moteur
-                  + " · os " + os + " · points " + pts + " · repères " + reperes;
+    if (handOn || handLoading) {
+      /* En mode main, l'état du corps n'apprend rien. Ce qu'il faut savoir,
+         c'est si le détecteur est chargé et s'il voit une main. */
+      const det = handLoading ? "TÉLÉCHARGEMENT…" : (handLandmarker ? "chargé" : "absent");
+      d.textContent = "MAIN · cam " + cam + " · détecteur " + det
+                    + " · mains vues " + mainsVues;
+    } else {
+      d.textContent = "corps · cam " + cam + " · " + moteur
+                    + " · os " + os + " · points " + pts + " · repères " + reperes;
+    }
   }
   const hybride = xrayOn && LAYER_META.some(m => active[m.key] && !COUVERTURE_3D[m.key]);
   document.getElementById("lensState").textContent =
@@ -379,12 +386,24 @@ async function toggleHand() {
   handTool.textContent = "…";
   try {
     if (!handLandmarker) {
+      /* 7,5 Mo à télécharger. Sur un téléphone ça prend plusieurs dizaines de
+         secondes, et je ne l'annonçais que par des points de suspension sur un
+         bouton de quarante pixels. Le chef a donc conclu, à raison, que « la
+         main n'est pas reconnue du tout » — alors que le modèle n'était pas
+         encore arrivé. On le dit maintenant en clair. */
+      detectEl.textContent = "Téléchargement du détecteur de main (7,5 Mo)… patiente.";
+      updateHud();
       const { HandLandmarker, FilesetResolver } = await import(MEDIAPIPE_CDN);
       const files = await FilesetResolver.forVisionTasks(MEDIAPIPE_CDN + "/wasm");
       handLandmarker = await HandLandmarker.createFromOptions(files, {
         baseOptions: { modelAssetPath: MODELE_MAIN, delegate: "GPU" },
         runningMode: "VIDEO",
-        numHands: 2
+        numHands: 2,
+        // Seuils abaissés : le défaut (0,5) rate les mains de profil et sous
+        // éclairage faible, exactement les cas d'usage réels.
+        minHandDetectionConfidence: 0.3,
+        minHandPresenceConfidence: 0.3,
+        minTrackingConfidence: 0.3
       });
     }
     handCanvas.classList.add("on");
@@ -403,7 +422,7 @@ async function toggleHand() {
     // n'apporte rien à cette distance et coûte cher sur téléphone.
     if (xrayOn) await toggle3D();
     layerRoot.style.display = "none";
-    detectEl.textContent = "Mode main : montre ta main à la caméra.";
+    detectEl.textContent = "Détecteur prêt — montre ta main, paume ou dos, à 20–40 cm.";
   } catch (e) {
     handCanvas.classList.remove("on");
     detectEl.textContent = "Mode main : " + e.message;
@@ -605,12 +624,9 @@ async function switchCamera() {
      complètement perdues », avec un diagnostic qui annonce pourtant
      tête + tronc + bassin. */
   if (facing === "environment" && !handOn && HAND) {
-    if (HAND.isReady()) {
-      await toggleHand();                    // le modèle est déjà là : on bascule
-      detectEl.textContent = "Caméra arrière : mode main activé.";
-    } else {
-      detectEl.textContent = "Caméra arrière — touche ✋ pour les os de la main.";
-    }
+    // On ne se contente plus de suggérer : passer en caméra arrière EST la
+    // demande de voir une main. On lance donc le téléchargement et la bascule.
+    await toggleHand();
   } else if (facing === "user" && handOn) {
     await toggleHand();                      // retour au corps entier
   }
