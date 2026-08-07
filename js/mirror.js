@@ -361,6 +361,33 @@ d3Tool.addEventListener("click", toggle3D);
 const handTool = document.getElementById("handTool");
 handTool.addEventListener("click", toggleHand);
 
+/* Étiquettes anatomiques : le nom de la structure regardée, quelques secondes.
+   Ne sert à rien tant qu'aucun moteur 3D ne tourne — c'est lui qui sait
+   nommer ce qu'il y a sous le point observé. */
+const ETIQ = window.MIROIR_ETIQ;
+if (ETIQ) ETIQ.init({ frameEl: frame });
+
+const nomTool = document.getElementById("nomTool");
+nomTool.addEventListener("click", () => {
+  if (!ETIQ) return;
+  const on = !ETIQ.isEnabled();
+  if (on && !xrayOn && !handOn) {
+    detectEl.textContent = "Nommage : allume d'abord la 3D ou le mode main.";
+    return;
+  }
+  ETIQ.setEnabled(on);
+  nomTool.classList.toggle("on", on);
+  updateHud();
+});
+
+/* Le module qui sait nommer : la main prime quand elle est active, c'est
+   qu'on regarde de près. */
+function sourceNommage() {
+  if (handOn && HAND && HAND.isReady()) return HAND;
+  if (xrayOn && XRAY && XRAY.isReady()) return XRAY;
+  return null;
+}
+
 const lensTool = document.getElementById("lensTool");
 lensTool.addEventListener("click", () => {
   const on = !LENS.isEnabled();
@@ -594,6 +621,7 @@ function loop() {
     SEG.process(video, now);
     feed3D(res);
     feedHand(now);
+    if (ETIQ) ETIQ.tick(now, sourceNommage());
     tickFps(now, "");
   }
   requestAnimationFrame(loop);
@@ -760,7 +788,8 @@ window.MIROIR_ENGINE = {
       }
     }
   },
-  onFrame() { if (window.MIROIR_AID?.onFrame) window.MIROIR_AID.onFrame(); }
+  onFrame() { if (window.MIROIR_AID?.onFrame) window.MIROIR_AID.onFrame(); },
+  get dims() { return dims; }
 };
 
 })();

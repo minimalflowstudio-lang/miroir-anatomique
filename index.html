@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/style.css?v=14">
+<link rel="stylesheet" href="css/style.css?v=17">
 </head>
 <body>
 
@@ -42,6 +42,7 @@
 <div id="tools" class="hidden">
   <button class="tool" id="d3Tool" title="Anatomie 3D réelle (14 Mo au 1er chargement)">3D</button>
   <button class="tool" id="handTool" title="Mode main — approche la caméra de ta main">✋</button>
+  <button class="tool" id="nomTool" title="Nommer les structures observées">🏷</button>
   <button class="tool on" id="lensTool" title="Lentille rayons X">◎</button>
   <button class="tool" id="segTool" title="Découper sur la silhouette">◐</button>
   <button class="tool" id="fsTool" title="Plein écran">⛶</button>
@@ -82,14 +83,15 @@
   <div id="aidFoot"></div>
 </div>
 
-<script src="js/layers.js?v=14" defer></script>
-<script src="js/lens.js?v=14" defer></script>
-<script src="js/segment.js?v=14" defer></script>
-<script src="js/terms.js?v=14" defer></script>
-<script src="modules/xray3d.js?v=14" defer></script>
-<script src="modules/xray_hand.js?v=14" defer></script>
-<script src="js/firstaid.js?v=14" defer></script>
-<script src="js/mirror.js?v=14" defer></script>
+<script src="js/layers.js?v=17" defer></script>
+<script src="js/lens.js?v=17" defer></script>
+<script src="js/segment.js?v=17" defer></script>
+<script src="js/terms.js?v=17" defer></script>
+<script src="js/labels.js?v=17" defer></script>
+<script src="modules/xray3d.js?v=17" defer></script>
+<script src="modules/xray_hand.js?v=17" defer></script>
+<script src="js/firstaid.js?v=17" defer></script>
+<script src="js/mirror.js?v=17" defer></script>
 <script>
   if ("serviceWorker" in navigator && location.protocol === "https:") {
     navigator.serviceWorker.register("sw.js").catch(() => {});

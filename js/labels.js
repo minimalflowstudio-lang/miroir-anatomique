@@ -136,7 +136,7 @@ function ouvrirFiche() {
     <div class="fiche-corps">
       ${t ? `
         <div class="fiche-ligne"><span>Nom latin</span><b>${t.la}</b></div>
-        <div class="fiche-ligne"><span>Nom anglais</span><b>${t.en || "—"}</b></div>
+        <div class="fiche-ligne"><span>Nom du modèle</span><b>${nom}</b></div>
         <div class="fiche-ligne"><span>Référence</span><b>TA2 ${t.id}</b></div>
       ` : `<p class="fiche-note">Structure « ${nom} » — pas encore de fiche
            traduite. Le nom affiché est celui du modèle anatomique.</p>`}

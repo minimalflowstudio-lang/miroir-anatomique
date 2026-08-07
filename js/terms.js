@@ -62,15 +62,20 @@ function decouper(valeur, k) {
 function chercher(nom) {
   if (!dico || !nom) return null;
 
-  let k = cle(nom);
+  /* Le suffixe de côté se retire AVANT la normalisation, tant que le point est
+     encore là. Sinon « Tibia.l » devient « tibial » — qui est un autre mot du
+     dictionnaire (l'adjectif tibial), et on afficherait une absurdité. */
+  const sansCote = String(nom).replace(/\.(l|r)$/i, "");
+
+  let k = cle(sansCote);
   if (dico[k]) return decouper(dico[k], k);
 
-  // suffixe de latéralité
-  k = k.replace(/(l|r|left|right)$/, "");
+  // nom complet, au cas où le point ferait partie du nom
+  k = cle(nom);
   if (dico[k]) return decouper(dico[k], k);
 
   // singulier / pluriel : TA2 stocke « Lungs », les objets disent « Lung »
-  const base0 = cle(nom);
+  const base0 = cle(sansCote);
   if (dico[base0 + "s"]) return decouper(dico[base0 + "s"], base0 + "s");
   if (base0.endsWith("s") && dico[base0.slice(0, -1)]) {
     const sing = base0.slice(0, -1);
@@ -78,7 +83,7 @@ function chercher(nom) {
   }
 
   // repli par préfixe décroissant, en s'arrêtant avant les clés trop courtes
-  const base = cle(nom);
+  const base = cle(sansCote);
   for (let n = base.length - 1; n >= 6; n--) {
     const p = base.slice(0, n);
     if (dico[p]) return decouper(dico[p], p);
