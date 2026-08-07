@@ -79,6 +79,9 @@ async function loadHandAssets() {
   const [gltf, rig] = await Promise.all([
     new GLTFLoader().loadAsync(ASSETS_DIR + "hand.glb"),
     fetch(ASSETS_DIR + "hand.rig.json").then(r => r.json()),
+    fetch(ASSETS_DIR + "hand.parts.json").then(r => r.json())
+      .then(d => { parts = d.parts || []; })
+      .catch(e => console.warn("[xray_hand] nommage indisponible : " + e.message)),
   ]);
 
   baseMaterial = new THREE.MeshStandardMaterial({
@@ -361,6 +364,68 @@ function normalizeHandedness(h, n) {
   return out;
 }
 
+/* ======================= Nommage des structures ==========================
+   Même principe que dans xray3d.js : les os de la main sont joints en deux
+   maillages, donc les noms Z-Anatomy (métacarpiens, phalanges, os du carpe)
+   ne survivent que dans `hand.parts.json`, sous forme de boîtes englobantes
+   exprimées dans le repère du modèle. */
+
+let parts = [];
+let raycaster = null, _mat4 = null, _local = null;
+const _ndc = { x: 0, y: 0 };
+
+function pick(x, y) {
+  if (!ready || !hands.length) return null;
+  if (!raycaster) {
+    raycaster = new THREE.Raycaster();
+    _mat4 = new THREE.Matrix4();
+    _local = new THREE.Vector3();
+  }
+  _ndc.x = (x / dims.W) * 2 - 1;
+  _ndc.y = -((y / dims.H) * 2 - 1);
+  if (mirrored) _ndc.x = -_ndc.x;
+  raycaster.setFromCamera(_ndc, camera);
+
+  const targets = hands.filter(h => h.group.visible).map(h => h.group);
+  if (!targets.length) return null;
+  const hits = raycaster.intersectObjects(targets, true);
+  if (!hits.length) return null;
+
+  const h = hits[0];
+  let node = h.object, hand = null;
+  while (node && !hand) {
+    hand = hands.find(x2 => x2.group === node) || null;
+    node = node.parent;
+  }
+  if (!hand) return null;
+
+  const regionName = "hand." + hand.side;
+  if (!parts.length) {
+    return { nom: null, region: regionName, distance: h.distance,
+             note: "hand.parts.json absent — régénère les assets" };
+  }
+
+  _mat4.copy(hand.group.matrix).invert();
+  _local.copy(h.point).applyMatrix4(_mat4);
+
+  /* Les os de la main sont petits et serrés : tolérance réduite à 2 mm. */
+  let best = null, bestD = Infinity, bestInside = false;
+  const M = 0.002;
+  for (const p of parts) {
+    if (p.region !== regionName) continue;
+    const inside = _local.x >= p.min[0] - M && _local.x <= p.max[0] + M &&
+                   _local.y >= p.min[1] - M && _local.y <= p.max[1] + M &&
+                   _local.z >= p.min[2] - M && _local.z <= p.max[2] + M;
+    const dx = _local.x - p.centre[0], dy = _local.y - p.centre[1], dz = _local.z - p.centre[2];
+    const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (inside && !bestInside) { best = p; bestD = d; bestInside = true; continue; }
+    if (inside === bestInside && d < bestD) { best = p; bestD = d; }
+  }
+  if (!best) return null;
+  return { nom: best.nom, region: regionName, distance: h.distance,
+           dansLaStructure: bestInside, ecart: +bestD.toFixed(4) };
+}
+
 function render() {
   if (!ready) return;
   const w = canvas.width, h = canvas.height;
@@ -392,6 +457,8 @@ function render() {
 
 window.MIROIR_HAND = {
   init, setDims, setMirrored, update, setLens, setDepthOcclusion, isReady,
+  /* nommage des structures (voir pick) */
+  pick,
   /* extras Ada : */
   render,
   handCount: () => hands.length,

@@ -7,7 +7,7 @@
    "tris_in": 598529,
    "tris_out": 139984,
    "ratio": 0.23391,
-   "bytes": 3891396,
+   "bytes": 3890076,
    "draco": false,
    "regions": [
     "foot.l",
@@ -27,7 +27,8 @@
     "upperarm.l",
     "upperarm.r"
    ],
-   "rig": "bones.rig.json"
+   "rig": "bones.rig.json",
+   "parts": "bones.parts.json"
   },
   {
    "key": "hand",
@@ -41,7 +42,8 @@
     "hand.l",
     "hand.r"
    ],
-   "rig": "hand.rig.json"
+   "rig": "hand.rig.json",
+   "parts": "hand.parts.json"
   },
   {
    "key": "muscles",
@@ -69,7 +71,8 @@
     "upperarm.l",
     "upperarm.r"
    ],
-   "rig": "muscles.rig.json"
+   "rig": "muscles.rig.json",
+   "parts": "muscles.parts.json"
   },
   {
    "key": "nerves",
@@ -85,7 +88,8 @@
     "other",
     "torso"
    ],
-   "rig": "nerves.rig.json"
+   "rig": "nerves.rig.json",
+   "parts": "nerves.parts.json"
   },
   {
    "key": "organs",
@@ -100,7 +104,8 @@
     "neck",
     "torso"
    ],
-   "rig": "organs.rig.json"
+   "rig": "organs.rig.json",
+   "parts": "organs.parts.json"
   },
   {
    "key": "vessels",
@@ -114,7 +119,8 @@
     "head",
     "torso"
    ],
-   "rig": "vessels.rig.json"
+   "rig": "vessels.rig.json",
+   "parts": "vessels.parts.json"
   }
  ]
 }

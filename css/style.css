@@ -256,6 +256,69 @@ a.call .num { margin-left: auto; font-size: 20px; letter-spacing: 1px; }
 #aidFoot { flex: 0 0 auto; padding: 10px 14px 14px; border-top: 1px solid #1e2833; display: flex; gap: 9px; }
 #aidFoot button { flex: 1; }
 
+/* ---------- Étiquette anatomique éphémère ---------- */
+#etiquette {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(150px + var(--safe-bottom)); z-index: 38;
+  background: rgba(10, 16, 22, 0.92);
+  border: 1.5px solid rgba(79, 195, 247, 0.55);
+  border-radius: 12px; padding: 9px 15px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  color: var(--text); cursor: pointer; max-width: 88vw;
+  animation: etiq-apparait 0.22s ease-out;
+  backdrop-filter: blur(3px);
+}
+@keyframes etiq-apparait {
+  from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.etiq-nom { font-size: 15px; font-weight: 700; letter-spacing: 0.2px; }
+.etiq-lat { font-size: 11.5px; font-style: italic; color: var(--text-dim); }
+.etiq-plus {
+  font-size: 9.5px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--accent); margin-top: 3px;
+}
+
+/* ---------- Fiche d'apprentissage ---------- */
+#fiche {
+  position: fixed; inset: auto 0 0 0; z-index: 55;
+  max-height: 78vh; background: #0d1218;
+  border-top: 1px solid #1e2833; border-radius: 16px 16px 0 0;
+  display: flex; flex-direction: column;
+  padding-bottom: var(--safe-bottom);
+  box-shadow: 0 -8px 32px rgba(0,0,0,0.55);
+  animation: fiche-monte 0.25s ease-out;
+}
+@keyframes fiche-monte { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.fiche-tete {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px 10px; border-bottom: 1px solid #1a242f; flex: 0 0 auto;
+}
+.fiche-tete h2 { font-size: 17px; font-weight: 700; flex: 1; line-height: 1.3; }
+.fiche-fermer {
+  background: none; border: none; color: var(--text-dim);
+  font-size: 26px; line-height: 1; cursor: pointer; padding: 0 4px;
+}
+.fiche-corps { overflow-y: auto; padding: 12px 16px 18px; -webkit-overflow-scrolling: touch; }
+.fiche-ligne {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 9px 0; border-bottom: 1px solid #18222d; font-size: 14px;
+}
+.fiche-ligne span { color: var(--text-dim); }
+.fiche-ligne b { text-align: right; font-weight: 600; }
+.fiche-note { font-size: 12px; color: var(--text-dim); line-height: 1.55; margin: 12px 0; }
+#fiche-rech {
+  width: 100%; background: #16202b; color: var(--text);
+  border: 1.5px solid #253242; border-radius: 10px;
+  padding: 11px 13px; font-size: 14px; margin-bottom: 10px;
+}
+.fiche-res-item {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 9px 0; border-bottom: 1px solid #18222d;
+}
+.fiche-res-item b { font-size: 13.5px; font-weight: 600; }
+.fiche-res-item span { font-size: 11.5px; font-style: italic; color: var(--text-dim); }
+
 /* Repérage tactile de la zone */
 #pickHint {
   position: fixed; left: 50%; transform: translateX(-50%); z-index: 45;

@@ -112,6 +112,7 @@ async function loadLayer(key, onProgress) {
   const [gltf, rig] = await Promise.all([
     new GLTFLoader().loadAsync(ASSETS_DIR + key + ".glb"),
     fetch(ASSETS_DIR + key + ".rig.json").then(r => r.json()),
+    loadParts(key),          // table de nommage, en parallèle (échec toléré)
   ]);
 
   /* Les couleurs de tissu sont peintes par sommet à l'export (COLOR_0) : un
@@ -518,6 +519,95 @@ function poseRegions(place3, ppm) {
   }
 }
 
+/* ======================= Nommage des structures ==========================
+   La jointure par région et la décimation effacent l'identité de chaque os ou
+   muscle : le GLB ne contient plus qu'un maillage par région. Le pipeline
+   écrit donc à côté un `<clé>.parts.json` — la boîte englobante de chaque
+   structure d'origine, dans le repère du modèle.
+
+   `pick(x, y)` lance un rayon sur la scène, ramène le point touché dans le
+   repère du modèle (via l'inverse de la transformation de la région), puis
+   cherche quelle structure occupe ce point. */
+
+const partsByLayer = {};        // clé de couche → [{nom, region, min, max, centre}]
+let raycaster = null;
+const _ndc = { x: 0, y: 0 };
+
+async function loadParts(key) {
+  if (partsByLayer[key]) return partsByLayer[key];
+  try {
+    const data = await fetch(ASSETS_DIR + key + ".parts.json").then(r => r.json());
+    partsByLayer[key] = data.parts || [];
+  } catch (e) {
+    partsByLayer[key] = [];
+    console.warn("[xray3d] nommage indisponible pour " + key + " : " + e.message);
+  }
+  return partsByLayer[key];
+}
+
+let _mat4 = null, _local = null;
+
+function pick(x, y) {
+  if (!ready || !regions.length) return null;
+  if (!raycaster) {
+    raycaster = new THREE.Raycaster();
+    _mat4 = new THREE.Matrix4();
+    _local = new THREE.Vector3();
+  }
+
+  /* Repère vidéo → coordonnées normalisées de la caméra orthographique.
+     La caméra est déjà inversée en mode miroir (voir applyDims), donc on
+     passe le point tel quel. */
+  _ndc.x = (x / dims.W) * 2 - 1;
+  _ndc.y = -((y / dims.H) * 2 - 1);
+  if (mirrored) _ndc.x = -_ndc.x;
+  raycaster.setFromCamera(_ndc, camera);
+
+  const targets = regions.filter(r => r.mesh.visible).map(r => r.mesh);
+  if (!targets.length) return null;
+  const hits = raycaster.intersectObjects(targets, true);
+  if (!hits.length) return null;
+
+  const h = hits[0];
+  /* Retrouver la région touchée : le mesh touché est un enfant du groupe. */
+  let node = h.object, reg = null;
+  while (node && !reg) {
+    reg = regions.find(r => r.mesh === node) || null;
+    node = node.parent;
+  }
+  if (!reg) return null;
+
+  const parts = partsByLayer[reg.layer];
+  if (!parts || !parts.length) {
+    return { nom: null, region: reg.name, distance: h.distance,
+             note: "nommage non chargé — appelle loadParts()" };
+  }
+
+  /* Point d'impact ramené dans le repère du modèle. */
+  _mat4.copy(reg.mesh.matrix).invert();
+  _local.copy(h.point).applyMatrix4(_mat4);
+
+  /* Parmi les structures de cette région, celles dont la boîte contient le
+     point ; la plus proche du centre l'emporte (les boîtes se chevauchent
+     entre structures voisines). Sinon, la plus proche tout court. */
+  let best = null, bestD = Infinity, bestInside = false;
+  const M = 0.004;                      // 4 mm de tolérance
+  for (const p of parts) {
+    if (p.region !== reg.name) continue;
+    const inside = _local.x >= p.min[0] - M && _local.x <= p.max[0] + M &&
+                   _local.y >= p.min[1] - M && _local.y <= p.max[1] + M &&
+                   _local.z >= p.min[2] - M && _local.z <= p.max[2] + M;
+    const dx = _local.x - p.centre[0], dy = _local.y - p.centre[1], dz = _local.z - p.centre[2];
+    const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (inside && !bestInside) { best = p; bestD = d; bestInside = true; continue; }
+    if (inside === bestInside && d < bestD) { best = p; bestD = d; }
+  }
+  if (!best) return null;
+
+  return { nom: best.nom, region: reg.name, distance: h.distance,
+           dansLaStructure: bestInside, ecart: +bestD.toFixed(4) };
+}
+
 function render() {
   if (!ready) return;
   const w = canvas.width, h = canvas.height;
@@ -547,6 +637,8 @@ function render() {
 
 window.MIROIR_XRAY = {
   init, setDims, setMirrored, update, setLayer, setOpacity, setLens, isReady,
+  /* nommage des structures (voir pick) */
+  pick, loadParts,
   /* extras Ada : */
   loadLayer, render,
   hasAssets: key => !!(groups[key] && groups[key].userData.loaded),
