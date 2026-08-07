@@ -486,14 +486,24 @@ function poseIsPlausible(lm, wl, shPx) {
   if (shPx < dims.W * 0.09) return false;
 
   /* 2. Proportions humaines : la distance épaules → hanches vaut environ 1 à
-        2 fois la largeur d'épaules. Très en dehors, ce n'est pas un tronc. */
-  const shx = (lm[11].x + lm[12].x) / 2 * dims.W;
-  const shy = (lm[11].y + lm[12].y) / 2 * dims.H;
-  const hpx = (lm[23].x + lm[24].x) / 2 * dims.W;
-  const hpy = (lm[23].y + lm[24].y) / 2 * dims.H;
-  const trunkPx = Math.hypot(hpx - shx, hpy - shy);
-  const ratio = trunkPx / Math.max(shPx, 1e-3);
-  if (ratio < 0.55 || ratio > 3.2) return false;
+        2 fois la largeur d'épaules. Très en dehors, ce n'est pas un tronc.
+        MAIS ce critère n'a de sens que si les hanches sont réellement VUES :
+        à bout de bras elles sortent du cadre, MediaPipe les extrapole
+        n'importe où, et juger la pose entière sur cette invention vidait
+        l'écran (hypothèse de Marie, confirmée). Hanches douteuses ou hors
+        cadre → on saute ce critère, les deux autres suffisent. */
+  const hipVis = Math.min(lm[23].visibility ?? 1, lm[24].visibility ?? 1);
+  const hipsSeen = hipVis > 0.5 &&
+    lm[23].y > -0.12 && lm[23].y < 1.12 && lm[24].y > -0.12 && lm[24].y < 1.12;
+  if (hipsSeen) {
+    const shx = (lm[11].x + lm[12].x) / 2 * dims.W;
+    const shy = (lm[11].y + lm[12].y) / 2 * dims.H;
+    const hpx = (lm[23].x + lm[24].x) / 2 * dims.W;
+    const hpy = (lm[23].y + lm[24].y) / 2 * dims.H;
+    const trunkPx = Math.hypot(hpx - shx, hpy - shy);
+    const ratio = trunkPx / Math.max(shPx, 1e-3);
+    if (ratio < 0.55 || ratio > 3.2) return false;
+  }
 
   /* 3. Taille réelle, quand les world landmarks sont là : des épaules
         humaines mesurent entre 20 et 65 cm. En dehors, c'est autre chose —
@@ -675,11 +685,28 @@ function poseRegions(place3, ppm, shoulderPx) {
   let bodyOk = false;
   if (bodyRest) {
     const v11 = place3(11, _p1), v12 = place3(12, _p2);
+    const shOk = v11 > VIS_MIN && v12 > VIS_MIN && inFrame(_p1) && inFrame(_p2);
+    const axx = _p2.x - _p1.x, axy = _p2.y - _p1.y;
+    const shW = Math.hypot(axx, axy);
     _aT.addVectors(_p1, _p2).multiplyScalar(0.5);
+
     const v23 = place3(23, _p1), v24 = place3(24, _p2);
     _bT.addVectors(_p1, _p2).multiplyScalar(0.5);
-    bodyOk = v11 > VIS_MIN && v12 > VIS_MIN && v23 > VIS_MIN && v24 > VIS_MIN
-             && inFrame(_aT) && inFrame(_bT);
+    const hipsOk = v23 > VIS_MIN && v24 > VIS_MIN && inFrame(_p1) && inFrame(_p2);
+
+    /* Dégrader plutôt que masquer (piste de Marie) : à bout de bras, les
+       hanches sortent du cadre — mais des épaules franches suffisent à poser
+       le tronc sur une longueur ESTIMÉE (1,55 × largeur d'épaules, la
+       convention de son repère SVG), perpendiculaire à l'axe des épaules,
+       vers le bas. Mieux vaut un thorax approximatif qu'un écran vide. */
+    if (shOk && !hipsOk && shW > 1) {
+      let px2 = -axy, py2 = axx;
+      if (py2 > 0) { px2 = -px2; py2 = -py2; }   // vers le bas = y monde négatif
+      const n = Math.hypot(px2, py2) || 1;
+      _bT.set(_aT.x + px2 / n * shW * 1.55,
+              _aT.y + py2 / n * shW * 1.55, _aT.z);
+    }
+    bodyOk = shOk && (hipsOk || shW > 1);
   }
 
   /* Régions masquées parce qu'une surcouche pleine définition les couvre. */
@@ -704,11 +731,14 @@ function poseRegions(place3, ppm, shoulderPx) {
     } else {
       const va = place3(r.bind.a, _p1);
       const vb = place3(r.bind.b, _p2);
-      /* Trois garde-fous : confiance, présence dans le cadre, longueur
-         plausible. Sans eux, un membre hors champ produit un os étiré en
-         travers de l'image — c'est ce que le chef voyait comme « des bugs ». */
-      if (va < VIS_MIN || vb < VIS_MIN ||
-          !inFrame(_p1) || !inFrame(_p2) ||
+      /* Garde-fous : confiance et longueur plausible restent stricts — ce
+         sont eux qui arrêtent les membres inventés en travers de l'image.
+         Mais « hors cadre » ne masque plus que si LES DEUX extrémités le
+         sont : un segment coupé par le bord de l'écran est normal quand on
+         est près de la caméra, l'écran le tronque de lui-même (piste 2 de
+         Marie : hors champ n'est pas inventé). */
+      const in1 = inFrame(_p1), in2 = inFrame(_p2);
+      if (va < VIS_MIN || vb < VIS_MIN || (!in1 && !in2) ||
           !plausible(_p1.distanceTo(_p2), shoulderPx)) {
         r.mesh.visible = false; continue;
       }
