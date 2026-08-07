@@ -24,11 +24,18 @@
 
 /* Les couches, de la plus superficielle à la plus profonde, avec la taille
    apparente à laquelle chacune s'installe pleinement. Entre deux paliers,
-   on demande un fondu continu au moteur 3D. */
+   on demande un fondu continu au moteur 3D.
+
+   ⚠️ N'y mettre QUE des couches ayant une vraie couverture 3D sur tout le
+   corps. J'y avais placé « nerves » : mesuré, cette couche ne fait que 3 500
+   pixels à l'écran contre 58 000 pour les muscles, parce que Z-Anatomy ne
+   contient que le cerveau et les organes des sens — ni nerf ni vaisseau des
+   membres. Le palier intermédiaire vidait donc l'écran de 91 % en pleine
+   descente. Voir COUVERTURE_3D dans mirror.js : seuls bones, muscles et
+   organs sont réellement couverts, et organs est limité au tronc. */
 const ECHELLE = [
-  { cle: "muscles", taille: 0.22 },
-  { cle: "nerves",  taille: 0.46 },
-  { cle: "bones",   taille: 0.78 },
+  { cle: "muscles", taille: 0.24 },
+  { cle: "bones",   taille: 0.62 },
 ];
 
 /* Largeur de la bande de transition, en fraction de l'écart entre deux
