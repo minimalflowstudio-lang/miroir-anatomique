@@ -250,7 +250,10 @@ function updateHud() {
       if (FRAMES.pelvis) r.push("bassin");
       reperes = r.length ? r.join("+") : "AUCUN";
     }
-    d.textContent = "moteur " + moteur + " · os " + os + " · points " + pts + " · repères " + reperes;
+    const mode = handOn ? "MAIN" : "corps";
+    const cam = facing === "user" ? "avant" : "arrière";
+    d.textContent = mode + " · cam " + cam + " · " + moteur
+                  + " · os " + os + " · points " + pts + " · repères " + reperes;
   }
   const hybride = xrayOn && LAYER_META.some(m => active[m.key] && !COUVERTURE_3D[m.key]);
   document.getElementById("lensState").textContent =
@@ -593,6 +596,24 @@ async function switchCamera() {
   // Caméra avant = miroir (on se regarde) ; caméra arrière = vue directe.
   appliquerMiroir(facing === "user");
   await startCamera();
+
+  /* La caméra arrière ne sert jamais à se regarder en entier : on la pointe
+     sur sa propre main, sur le bras de quelqu'un. Or en mode corps, MediaPipe
+     ne dit jamais « je ne vois pas de corps » — il en invente un à partir
+     d'une main, et l'app pose alors un squelette entier sur quelques doigts.
+     C'est ce que le chef décrit : « en caméra arrière les mains sont
+     complètement perdues », avec un diagnostic qui annonce pourtant
+     tête + tronc + bassin. */
+  if (facing === "environment" && !handOn && HAND) {
+    if (HAND.isReady()) {
+      await toggleHand();                    // le modèle est déjà là : on bascule
+      detectEl.textContent = "Caméra arrière : mode main activé.";
+    } else {
+      detectEl.textContent = "Caméra arrière — touche ✋ pour les os de la main.";
+    }
+  } else if (facing === "user" && handOn) {
+    await toggleHand();                      // retour au corps entier
+  }
 }
 
 document.getElementById("startBtn").addEventListener("click", startCamera);
