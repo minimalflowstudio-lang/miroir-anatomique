@@ -46,6 +46,16 @@ const tctx = tmp.getContext("2d");
 let maskUrl = null;
 let lastUrl = null;
 
+/* Le masque sert de deux façons : en masque CSS pour le calque SVG (ce qui
+   impose un encodage PNG), et en texture WebGL pour le moteur 3D (qui lit le
+   canvas directement, gratuitement).
+
+   Mesuré par Ada : encodage PNG 256×256 = 3,27 ms, contre 0,027 ms pour le
+   téléversement en texture — 123 fois plus cher. Comme le SVG est masqué dès
+   que la 3D s'allume, on n'encode que quand quelqu'un regarde vraiment le SVG. */
+let besoinPng = true;
+function setBesoinPng(v) { besoinPng = !!v; }
+
 async function load() {
   if (segmenter || loading) return;
   loading = true;
@@ -133,6 +143,8 @@ function process(video, tMs) {
   ctx.drawImage(tmp, 0, 0);
   ctx.filter = "none";
 
+  if (!besoinPng) return;   // en 3D, le canvas part directement en texture
+
   canvas.toBlob(blob => {
     if (!blob) return;
     const url = URL.createObjectURL(blob);
@@ -145,6 +157,6 @@ function process(video, tMs) {
 
 function getCanvas() { return canvas; }
 
-window.MIROIR_SEG = { load, isReady, isEnabled, setEnabled, attach, process, getCanvas };
+window.MIROIR_SEG = { load, isReady, isEnabled, setEnabled, attach, process, getCanvas, setBesoinPng };
 
 })();

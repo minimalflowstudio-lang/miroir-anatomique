@@ -5,7 +5,7 @@
 
 /* ⚠️ Incrémenter CACHE à CHAQUE mise en ligne : sinon les téléphones qui ont
    déjà chargé l'app gardent l'ancienne version. */
-const CACHE = "miroir-v2";
+const CACHE = "miroir-v3";
 const CORE = [
   "./",
   "./index.html",
@@ -13,6 +13,7 @@ const CORE = [
   "./js/layers.js",
   "./js/lens.js",
   "./js/segment.js",
+  "./js/terms.js",
   "./js/mirror.js",
   "./js/firstaid.js",
   "./manifest.webmanifest",

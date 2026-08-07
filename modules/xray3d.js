@@ -114,8 +114,12 @@ async function loadLayer(key, onProgress) {
     fetch(ASSETS_DIR + key + ".rig.json").then(r => r.json()),
   ]);
 
+  /* Les couleurs de tissu sont peintes par sommet à l'export (COLOR_0) : un
+     seul matériau suffit pour toute une région, et les organes restent
+     distinguables. `color` blanc pour ne pas teinter l'attribut. */
   const mat = new THREE.MeshStandardMaterial({
-    color: 0xece4d4, roughness: 0.55, metalness: 0.05, transparent: true, opacity,
+    color: 0xffffff, roughness: 0.55, metalness: 0.05,
+    transparent: true, opacity, vertexColors: true,
   });
 
   /* Une région jointe ressort en plusieurs primitives glTF (une par matériau),

@@ -50,6 +50,20 @@ html, body {
   letter-spacing: 0.2px;
 }
 
+/* Attribution CC BY-SA : obligation de la licence des modèles anatomiques,
+   elle doit rester visible depuis la page publiée. */
+#credit {
+  display: inline-block;
+  margin-left: 8px;
+  color: #fff;
+  opacity: 0.85;
+  font-weight: 500;
+  font-size: 0.9em;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+#credit:hover { opacity: 1; }
+
 /* ---------- Scène caméra ---------- */
 #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 #frame { position: relative; }

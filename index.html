@@ -11,11 +11,12 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/style.css?v=11">
+<link rel="stylesheet" href="css/style.css?v=13">
 </head>
 <body>
 
-<div id="banner">⚠️ Visualisation éducative — pas un dispositif médical, pas un diagnostic. Tout est traité localement : aucune image ne quitte cet appareil.</div>
+<div id="banner">⚠️ Visualisation éducative — pas un dispositif médical, pas un diagnostic. Tout est traité localement : aucune image ne quitte cet appareil.
+  <a id="credit" href="LICENSE" target="_blank" rel="noopener">Modèles © Z-Anatomy — CC BY-SA 4.0</a></div>
 
 <div id="stage">
   <div id="frame">
@@ -79,12 +80,13 @@
   <div id="aidFoot"></div>
 </div>
 
-<script src="js/layers.js?v=11" defer></script>
-<script src="js/lens.js?v=11" defer></script>
-<script src="js/segment.js?v=11" defer></script>
-<script src="modules/xray3d.js?v=11" defer></script>
-<script src="js/firstaid.js?v=11" defer></script>
-<script src="js/mirror.js?v=11" defer></script>
+<script src="js/layers.js?v=13" defer></script>
+<script src="js/lens.js?v=13" defer></script>
+<script src="js/segment.js?v=13" defer></script>
+<script src="js/terms.js?v=13" defer></script>
+<script src="modules/xray3d.js?v=13" defer></script>
+<script src="js/firstaid.js?v=13" defer></script>
+<script src="js/mirror.js?v=13" defer></script>
 <script>
   if ("serviceWorker" in navigator && location.protocol === "https:") {
     navigator.serviceWorker.register("sw.js").catch(() => {});

@@ -162,7 +162,8 @@ function toggleLayer(key, btn) {
   else setTimeout(() => { if (!active[key]) g.setAttribute("visibility", "hidden"); }, 260);
   btn.classList.toggle("on", active[key]);
   applyDepthOpacity();
-  if (xrayOn && XRAY) XRAY.setLayer(key, active[key]);
+  if (xrayOn && XRAY && COUVERTURE_3D[key]) XRAY.setLayer(key, active[key]);
+  if (xrayOn) appliquerVisibiliteSVG();
   updateHud();
 }
 
@@ -184,8 +185,9 @@ function applyDepthOpacity() {
 function updateHud() {
   const on = LAYER_META.filter(m => active[m.key]).map(m => m.label);
   document.getElementById("layersOn").textContent = on.length ? on.join(" + ") : "aucune";
+  const hybride = xrayOn && LAYER_META.some(m => active[m.key] && !COUVERTURE_3D[m.key]);
   document.getElementById("lensState").textContent =
-    (xrayOn ? "3D réelle" : "schéma") +
+    (xrayOn ? (hybride ? "3D réelle + schéma" : "3D réelle") : "schéma") +
     (LENS.isEnabled() ? " · lentille ON" : " · lentille OFF") +
     (SEG.isEnabled() ? " · silhouette ON" : "");
 }
@@ -211,12 +213,28 @@ const XRAY = window.MIROIR_XRAY;
 const xrayCanvas = document.getElementById("xrayCanvas");
 let xrayOn = false, xrayLoading = false;
 
+/* Toutes les couches n'existent pas en 3D. Z-Anatomy ne contient ni nerfs ni
+   vaisseaux des membres : sa collection « cardiovasculaire » est le cœur seul,
+   et sa collection « nerveuse » le cerveau. Plutôt que d'amputer ces deux
+   couches, on garde leur tracé SVG même en mode 3D — mieux vaut un schéma
+   juste qu'un vide. Les autres couches basculent en géométrie réelle. */
+const COUVERTURE_3D = { bones: true, muscles: true, organs: true,
+                        nerves: false, vessels: false };
+
+function appliquerVisibiliteSVG() {
+  for (const key of LAYER_ORDER) {
+    const cacheParLa3D = xrayOn && COUVERTURE_3D[key];
+    groups[key].root.style.display = cacheParLa3D ? "none" : "";
+  }
+}
+
 async function toggle3D() {
   if (xrayLoading) return;
   if (xrayOn) {                       // extinction
     xrayOn = false;
     xrayCanvas.classList.remove("on");
-    layerRoot.style.display = "";
+    appliquerVisibiliteSVG();
+    SEG.setBesoinPng(true);            // le SVG redevient visible : masque CSS requis
     d3Tool.classList.remove("on");
     updateHud();
     return;
@@ -233,9 +251,12 @@ async function toggle3D() {
     XRAY.setMirrored(mirrored);
     // On n'allume que les couches déjà cochées, en commençant par les os :
     // c'est le seul système entièrement articulé à ce jour.
-    for (const { key } of LAYER_META) await XRAY.setLayer(key, active[key]);
+    for (const { key } of LAYER_META) {
+      if (COUVERTURE_3D[key]) await XRAY.setLayer(key, active[key]);
+    }
     xrayOn = true;
-    layerRoot.style.display = "none";   // le SVG laisse la place à la 3D
+    appliquerVisibiliteSVG();          // le SVG ne cède que là où la 3D existe
+    SEG.setBesoinPng(false);           // plus de SVG masqué en CSS : on économise l'encodage
     d3Tool.classList.add("on");
   } catch (e) {
     xrayCanvas.classList.remove("on");
