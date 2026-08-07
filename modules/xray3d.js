@@ -144,7 +144,7 @@ async function loadLayer(key, onProgress) {
   /* Matière d'os procédurale : sans elle, une couleur unie lit comme un
      aplat de dessin animé quel que soit l'éclairage (voir photoreal.js). */
   if (window.MIROIR_PHOTOREAL && window.MIROIR_PHOTOREAL.applyBoneTexture) {
-    window.MIROIR_PHOTOREAL.applyBoneTexture(mat, boneTexture);
+    window.MIROIR_PHOTOREAL.applyBoneTexture(mat, boneTexture, frontFor(key));
   }
 
   /* Une région jointe ressort en plusieurs primitives glTF (une par matériau),
@@ -168,6 +168,24 @@ async function loadLayer(key, onProgress) {
     if (hit) hit.meshes.push(o); else orphans.push(o.name);
   });
   if (orphans.length) console.warn("[xray3d] " + orphans.length + " maillage(s) hors région :", orphans.slice(0, 5));
+
+  /* Les systèmes mono-teinte (os) sont exportés SANS couleur par sommet —
+     c'était plus d'un quart du poids pour une valeur constante. Sans ce test,
+     three.js rendrait la géométrie noire. */
+  /* Certains systèmes sont exportés SANS normales (12 octets par sommet
+     économisés) : on les recalcule ici. Sans cela, three.js rendrait la
+     géométrie entièrement noire. */
+  gltf.scene.traverse(o => {
+    if (o.isMesh && !o.geometry.attributes.normal) o.geometry.computeVertexNormals();
+  });
+
+  let anyColor = false;
+  gltf.scene.traverse(o => { if (o.isMesh && o.geometry.attributes.color) anyColor = true; });
+  if (!anyColor) {
+    mat.vertexColors = false;
+    mat.color.setHex(0xece4d4);          // teinte osseuse
+    mat.needsUpdate = true;
+  }
 
   for (const [, b] of buckets) {
     if (!b.meshes.length) continue;
@@ -710,6 +728,21 @@ function poseRegions(place3, ppm, shoulderPx) {
    repère du modèle (via l'inverse de la transformation de la région), puis
    cherche quelle structure occupe ce point. */
 
+/* Uniforms du front de transition, un jeu par couche : le shader de matière
+   les lit pour découper la géométrie de part et d'autre de la frontière. */
+const frontUniforms = {};
+function frontFor(key) {
+  if (!frontUniforms[key]) {
+    frontUniforms[key] = {
+      uFrontC: { value: new THREE.Vector2(0, 0) },
+      uFrontR: { value: 0 },
+      uFrontOn: { value: 0 },
+      uFrontSide: { value: 1 },
+    };
+  }
+  return frontUniforms[key];
+}
+
 const partsByLayer = {};        // clé de couche → [{nom, region, min, max, centre}]
 let raycaster = null;
 const _ndc = { x: 0, y: 0 };
@@ -789,6 +822,42 @@ function pick(x, y) {
            dansLaStructure: bestInside, ecart: +bestD.toFixed(4) };
 }
 
+/* ==================== Fondu SPATIAL entre deux couches ====================
+   Un fondu en opacité ferait cohabiter deux couches à moitié transparentes :
+   l'œil n'y lit pas une transition mais un défaut d'affichage. On fait donc
+   avancer une FRONTIÈRE : la couche entrante gagne depuis le centre du regard
+   vers les bords, la sortante recule dans le même mouvement. À chaque instant
+   l'image reste nette partout, et le geste d'approche se lit comme une
+   pénétration dans le corps.
+
+   Le centre du front est celui de la lentille, déjà connu du shader. */
+
+let transition = null;   // { from, to, t }
+
+function setTransition(from, to, t) {
+  t = Math.min(Math.max(t ?? 0, 0), 1);
+  transition = { from: from || null, to: to || null, t };
+  /* Les deux couches doivent être allumées pendant le fondu ; le shader se
+     charge de n'en montrer qu'une de chaque côté du front. */
+  if (from && groups[from]) groups[from].visible = t < 1;
+  if (to && groups[to]) {
+    groups[to].visible = t > 0;
+    if (t > 0 && !groups[to].userData.loaded && !groups[to].userData.loading) {
+      setLayer(to, true);          // déclenche le chargement à la demande
+    }
+  }
+  render();
+}
+
+function clearTransition() { transition = null; render(); }
+
+/* Rayon du front, en pixels du canvas. À t=0 il est nul (rien de l'entrante),
+   à t=1 il dépasse la diagonale (plus rien de la sortante). */
+function frontRadius(w, h) {
+  const diag = Math.hypot(w, h);
+  return transition ? transition.t * diag * 1.05 : 0;
+}
+
 function render() {
   if (!ready) return;
   const w = canvas.width, h = canvas.height;
@@ -807,6 +876,23 @@ function render() {
   }
   u.uTexel.value.set(1 / w, 1 / h);
   u.uRealism.value = realism;
+
+  /* Front de transition : centré sur la lentille quand elle est active,
+     sinon au milieu de l'image. */
+  const fr = frontRadius(w, h);
+  const fs = w / dims.W;
+  const fcx = lens.enabled ? (mirrored ? dims.W - lens.cx : lens.cx) * fs : w * 0.5;
+  const fcy = lens.enabled ? h - lens.cy * fs : h * 0.5;
+  for (const key in frontUniforms) {
+    const fu = frontUniforms[key];
+    const actif = !!transition && (key === transition.from || key === transition.to);
+    fu.uFrontOn.value = actif ? 1 : 0;
+    if (actif) {
+      fu.uFrontC.value.set(fcx, fcy);
+      fu.uFrontR.value = fr;
+      fu.uFrontSide.value = key === transition.to ? 1 : -1;
+    }
+  }
   u.uTime.value = (performance.now() % 100000) / 1000;
 
   /* Éclairage et étalonnage relevés dans l'image filmée. */
@@ -834,6 +920,7 @@ window.MIROIR_XRAY = {
   init, setDims, setMirrored, update, setLayer, setOpacity, setLens, isReady,
   /* nommage des structures (voir pick) */
   pick, loadParts,
+  setTransition, clearTransition,
   /* intégration photographique : 0 = rendu neutre, 1 = accordé à l'image */
   setRealism(v) { realism = Math.min(Math.max(v, 0), 1); render(); },
   /* Dosage du « vu à travers la peau » : 0 = anatomie posée par-dessus,

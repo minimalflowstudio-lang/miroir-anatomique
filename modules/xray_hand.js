@@ -108,6 +108,23 @@ async function loadHandAssets() {
     window.MIROIR_PHOTOREAL.applyBoneTexture(baseMaterial, boneTexture);
   }
 
+  /* hand.glb est mono-teinte, donc exporté sans couleur par sommet : sans ce
+     test, three.js rendrait les os en noir. */
+  /* Certains systèmes sont exportés SANS normales (12 octets par sommet
+     économisés) : on les recalcule ici. Sans cela, three.js rendrait la
+     géométrie entièrement noire. */
+  gltf.scene.traverse(o => {
+    if (o.isMesh && !o.geometry.attributes.normal) o.geometry.computeVertexNormals();
+  });
+
+  let anyColor = false;
+  gltf.scene.traverse(o => { if (o.isMesh && o.geometry.attributes.color) anyColor = true; });
+  if (!anyColor) {
+    baseMaterial.vertexColors = false;
+    baseMaterial.color.setHex(0xece4d4);
+    baseMaterial.needsUpdate = true;
+  }
+
   const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g, "");
   const found = { l: [], r: [] };
   gltf.scene.traverse(o => {

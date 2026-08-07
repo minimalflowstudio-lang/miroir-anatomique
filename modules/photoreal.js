@@ -279,9 +279,33 @@ const BONE_BUMP_PATCH = `
   }
 `;
 
-function applyBoneTexture(material, strength = 1) {
+/* Découpe par FRONT circulaire, pour le fondu spatial entre deux couches.
+   `uFrontSide` vaut +1 pour la couche entrante (visible À L'INTÉRIEUR du
+   front) et −1 pour la sortante (visible à l'extérieur). Un liseré adoucit
+   la frontière sur quelques pixels, sinon elle serait taillée à la serpe. */
+const FRONT_PARS = `
+uniform vec2  uFrontC;
+uniform float uFrontR, uFrontSide, uFrontOn;
+`;
+
+const FRONT_PATCH = `
+  if (uFrontOn > 0.5) {
+    float dFront = distance(gl_FragCoord.xy, uFrontC);
+    float inside = 1.0 - smoothstep(uFrontR - 26.0, uFrontR + 26.0, dFront);
+    float keep = uFrontSide > 0.0 ? inside : 1.0 - inside;
+    if (keep < 0.5) discard;
+  }
+`;
+
+function applyBoneTexture(material, strength = 1, front = null) {
   material.userData.boneTexture = true;
   material.onBeforeCompile = (shader) => {
+    if (front) {
+      shader.uniforms.uFrontC = front.uFrontC;
+      shader.uniforms.uFrontR = front.uFrontR;
+      shader.uniforms.uFrontOn = front.uFrontOn;
+      shader.uniforms.uFrontSide = front.uFrontSide;
+    }
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nvarying vec3 vLocalPos;")
       .replace("#include <begin_vertex>",
@@ -289,9 +313,10 @@ function applyBoneTexture(material, strength = 1) {
 
     let frag = shader.fragmentShader
       .replace("#include <common>",
-               "#include <common>\n#define BONE_BUMP " + strength.toFixed(3) + "\n" + BONE_PARS)
+               "#include <common>\n#define BONE_BUMP " + strength.toFixed(3) + "\n"
+               + (front ? FRONT_PARS : "") + BONE_PARS)
       .replace("#include <color_fragment>",
-               "#include <color_fragment>\n" + BONE_COLOR_PATCH)
+               "#include <color_fragment>\n" + (front ? FRONT_PATCH : "") + BONE_COLOR_PATCH)
       .replace("#include <roughnessmap_fragment>",
                "#include <roughnessmap_fragment>\n" + BONE_ROUGH_PATCH);
 

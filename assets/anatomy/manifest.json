@@ -7,7 +7,7 @@
    "tris_in": 33704,
    "tris_out": 33704,
    "ratio": 1.0,
-   "bytes": 717632,
+   "bytes": 513524,
    "draco": false,
    "regions": [
     "forearm.l",
@@ -26,7 +26,7 @@
    "tris_in": 598529,
    "tris_out": 139984,
    "ratio": 0.23391,
-   "bytes": 3890076,
+   "bytes": 3023468,
    "draco": false,
    "regions": [
     "foot.l",
@@ -55,7 +55,7 @@
    "tris_in": 21768,
    "tris_out": 21768,
    "ratio": 1.0,
-   "bytes": 462988,
+   "bytes": 330948,
    "draco": false,
    "regions": [
     "hand.l",
@@ -67,10 +67,10 @@
   {
    "key": "head",
    "file": "head.glb",
-   "tris_in": 204624,
-   "tris_out": 204624,
+   "tris_in": 169715,
+   "tris_out": 169715,
    "ratio": 1.0,
-   "bytes": 6953236,
+   "bytes": 3614108,
    "draco": false,
    "regions": [
     "head",
