@@ -162,6 +162,13 @@ function toggleLayer(key, btn) {
   if (active[key]) g.setAttribute("visibility", "visible");
   else setTimeout(() => { if (!active[key]) g.setAttribute("visibility", "hidden"); }, 260);
   btn.classList.toggle("on", active[key]);
+  /* La distance propose, les boutons décident : toucher une couche à la main
+     coupe l'automatisme. Sans ça on retirerait le contrôle à l'utilisateur. */
+  if (PROF && PROF.isEnabled()) {
+    PROF.setEnabled(false);
+    profTool.classList.remove("on");
+    detectEl.textContent = "Navigation par distance arrêtée — tu reprends la main.";
+  }
   applyDepthOpacity();
   if (xrayOn && XRAY && COUVERTURE_3D[key]) XRAY.setLayer(key, active[key]);
   if (xrayOn) appliquerVisibiliteSVG();
@@ -183,6 +190,18 @@ function applyDepthOpacity() {
   }
 }
 
+/* Affiche où l'on en est dans la descente : « muscles → nerfs 40 % » se lit
+   bien mieux qu'un simple nom de couche pendant un fondu. */
+function etatProfondeur() {
+  if (!PROF || !PROF.isEnabled()) return "";
+  const e = PROF.etat();
+  if (!e || !e.sortante) return " · distance ON";
+  const nom = k => (LAYER_META.find(m => m.key === k) || {}).label || k;
+  if (e.t <= 0.01) return " · " + nom(e.sortante);
+  if (e.t >= 0.99) return " · " + nom(e.entrante);
+  return " · " + nom(e.sortante) + " → " + nom(e.entrante) + " " + Math.round(e.t * 100) + " %";
+}
+
 function updateHud() {
   const on = LAYER_META.filter(m => active[m.key]).map(m => m.label);
   document.getElementById("layersOn").textContent = on.length ? on.join(" + ") : "aucune";
@@ -192,6 +211,7 @@ function updateHud() {
     (handOn ? " · MAIN" + (lentilleSuitLaMain ? " (lentille auto)" : "") : "") +
     (GROS_PLAN.head.visible ? " · tête détaillée" : "") +
     (GROS_PLAN.arm.visible ? " · bras détaillé" : "") +
+    etatProfondeur() +
     (LENS.isEnabled() ? " · lentille ON" : " · lentille OFF") +
     (SEG.isEnabled() ? " · silhouette ON" : "");
 }
@@ -407,6 +427,22 @@ d3Tool.addEventListener("click", toggle3D);
 
 const handTool = document.getElementById("handTool");
 handTool.addEventListener("click", toggleHand);
+
+/* Navigation par distance : approcher le téléphone descend plus profond.
+   Éteinte par défaut — c'est un mode qu'on choisit, pas un comportement subi. */
+const PROF = window.MIROIR_PROF;
+const profTool = document.getElementById("profTool");
+profTool.addEventListener("click", () => {
+  if (!PROF) return;
+  if (!xrayOn) { detectEl.textContent = "Navigation par distance : allume d'abord la 3D."; return; }
+  const on = !PROF.isEnabled();
+  PROF.setEnabled(on);
+  profTool.classList.toggle("on", on);
+  detectEl.textContent = on
+    ? "Approche ou éloigne le téléphone pour changer de profondeur."
+    : "Navigation par distance arrêtée.";
+  updateHud();
+});
 
 /* Étiquettes anatomiques : le nom de la structure regardée, quelques secondes.
    Ne sert à rien tant qu'aucun moteur 3D ne tourne — c'est lui qui sait
@@ -707,6 +743,9 @@ function gererGrosPlan() {
   // La tête se mesure à l'écart des oreilles, l'avant-bras du coude au poignet.
   evaluer("head", tailleRelative(7, 8));
   evaluer("arm", Math.max(tailleRelative(14, 16) ?? 0, tailleRelative(13, 15) ?? 0) || null);
+
+  // Navigation par distance : la largeur d'épaules apparente dit la proximité.
+  if (PROF && PROF.isEnabled()) PROF.update(tailleRelative(11, 12));
 }
 
 function evaluer(cle, taille) {
