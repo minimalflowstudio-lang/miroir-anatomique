@@ -104,6 +104,7 @@ const stage = document.getElementById("stage");
 function moveLens(e) {
   if (!LENS.isEnabled()) return;
   if (window.MIROIR_AID?.isPicking?.()) return;   // le repérage de plaie a la priorité
+  lentilleSuitLaMain = false;   // dès qu'on la déplace à la main, on reprend la main
   LENS.setCenterFromClient(e.clientX, e.clientY);
 }
 stage.addEventListener("pointermove", moveLens);
@@ -188,7 +189,7 @@ function updateHud() {
   const hybride = xrayOn && LAYER_META.some(m => active[m.key] && !COUVERTURE_3D[m.key]);
   document.getElementById("lensState").textContent =
     (xrayOn ? (hybride ? "3D réelle + schéma" : "3D réelle") : "schéma") +
-    (handOn ? " · MAIN (" + mainsVues + ")" : "") +
+    (handOn ? " · MAIN" + (lentilleSuitLaMain ? " (lentille auto)" : "") : "") +
     (LENS.isEnabled() ? " · lentille ON" : " · lentille OFF") +
     (SEG.isEnabled() ? " · silhouette ON" : "");
 }
@@ -288,6 +289,7 @@ async function toggleHand() {
     handOn = false;
     handCanvas.classList.remove("on");
     handTool.classList.remove("on");
+    appliquerVisibiliteSVG();     // le schéma du corps revient
     updateHud();
     return;
   }
@@ -312,8 +314,14 @@ async function toggleHand() {
     HAND.setMirrored(mirrored);
     HAND.setDepthOcclusion(true);
     handOn = true;
+    lentilleSuitLaMain = true;
+    lentilleCible = null;
     handTool.classList.add("on");
-    detectEl.textContent = "Mode main : approche ta main de la caméra.";
+    // Le mode main est un gros plan : on éteint la 3D du corps entier, qui
+    // n'apporte rien à cette distance et coûte cher sur téléphone.
+    if (xrayOn) await toggle3D();
+    layerRoot.style.display = "none";
+    detectEl.textContent = "Mode main : montre ta main à la caméra.";
   } catch (e) {
     handCanvas.classList.remove("on");
     detectEl.textContent = "Mode main : " + e.message;
@@ -324,6 +332,12 @@ async function toggleHand() {
   }
 }
 
+/* La lentille suit la main détectée tant que l'utilisateur n'y a pas touché.
+   Sans ça, elle reste un petit disque au centre de l'écran : la main devait
+   entrer dedans pour que les os apparaissent, ce qui obligeait à coller le
+   téléphone. C'est exactement le défaut remonté par le chef. */
+let lentilleSuitLaMain = true;
+
 /* Alimente le module main : pose des 21 points, lentille, silhouette. */
 function feedHand(now) {
   if (!handOn || !handLandmarker || !HAND) return;
@@ -331,16 +345,47 @@ function feedHand(now) {
   try { res = handLandmarker.detectForVideo(video, now); }
   catch { return; }
 
+  const mains = res.landmarks || [];
+  mainsVues = mains.length;
+
+  if (mains.length && lentilleSuitLaMain) cadrerSurLaMain(mains[0]);
+
   HAND.setLens(LENS.getState());
   HAND.update({
-    landmarks:        res.landmarks || [],
+    landmarks:        mains,
     worldLandmarks:   res.worldLandmarks || [],
     handedness:       res.handedness || res.handednesses || [],
     segmentationMask: SEG.isEnabled() ? SEG.getCanvas() : null
   });
-  mainsVues = (res.landmarks || []).length;
 }
 let mainsVues = 0;
+
+/* Centre et dimensionne la lentille sur la main, avec un lissage : un
+   recadrage instantané à chaque image donnerait une lentille qui tremble. */
+let lentilleCible = null;
+function cadrerSurLaMain(pts) {
+  let minX = 1, maxX = 0, minY = 1, maxY = 0;
+  for (const p of pts) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const cx = (minX + maxX) / 2 * dims.W;
+  const cy = (minY + maxY) / 2 * dims.H;
+  // rayon englobant la main, avec de la marge pour le poignet
+  const demiDiag = Math.hypot((maxX - minX) * dims.W, (maxY - minY) * dims.H) / 2;
+  const frac = Math.min(Math.max(demiDiag * 1.45 / Math.min(dims.W, dims.H), 0.14), 0.6);
+
+  if (!lentilleCible) lentilleCible = { x: cx, y: cy, f: frac };
+  const A = 0.25;                       // lissage exponentiel
+  lentilleCible.x += A * (cx - lentilleCible.x);
+  lentilleCible.y += A * (cy - lentilleCible.y);
+  lentilleCible.f += A * (frac - lentilleCible.f);
+
+  LENS.centerOnVideoPoint(lentilleCible.x, lentilleCible.y);
+  LENS.setRadiusFrac(lentilleCible.f);
+}
 
 const SEG = window.MIROIR_SEG;
 SEG.attach(overlay);
@@ -614,13 +659,22 @@ function loop() {
     // retombe sur une échelle estimée depuis la largeur d'épaules.
     feed3D({ landmarks: [lm], worldLandmarks: null });
     tickFps(now, " (démo)");
-  } else if (landmarker && video.currentTime !== lastT && video.videoWidth > 0) {
+  } else if (video.currentTime !== lastT && video.videoWidth > 0) {
     lastT = video.currentTime;
-    const res = landmarker.detectForVideo(video, now);
-    update(res.landmarks?.[0] || null);
-    SEG.process(video, now);
-    feed3D(res);
-    feedHand(now);
+
+    if (handOn) {
+      // Gros plan sur la main : la détection du corps entier ne sert à rien
+      // ici et coûte cher sur téléphone. On ne fait tourner que la main.
+      feedHand(now);
+      detectEl.textContent = mainsVues
+        ? (mainsVues > 1 ? "Deux mains détectées ✓" : "Main détectée ✓")
+        : "Aucune main dans le cadre — montre ta paume ou le dos de ta main.";
+    } else if (landmarker) {
+      const res = landmarker.detectForVideo(video, now);
+      update(res.landmarks?.[0] || null);
+      SEG.process(video, now);
+      feed3D(res);
+    }
     if (ETIQ) ETIQ.tick(now, sourceNommage());
     tickFps(now, "");
   }
