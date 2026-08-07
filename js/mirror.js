@@ -43,6 +43,13 @@ let mirrored   = true;
 /* Couches actives : « os » seule au départ */
 const active = { bones: true, muscles: false, nerves: false, organs: false, vessels: false };
 
+/* La version s'affiche dès le chargement de la page, avant même la caméra :
+   c'est la première chose à pouvoir vérifier quand un écran « ne change pas ». */
+{
+  const g = document.getElementById("versionBig");
+  if (g) g.textContent = VERSION;
+}
+
 /* ---------------------------------------------------------------- Modèle */
 async function loadModel() {
   try {
@@ -216,6 +223,21 @@ function updateHud() {
   document.getElementById("layersOn").textContent = on.length ? on.join(" + ") : "aucune";
   const v = document.getElementById("version");
   if (v) v.textContent = VERSION;
+  const g = document.getElementById("versionBig");
+  if (g) g.textContent = VERSION;
+
+  /* Diagnostic lisible à l'écran. Sans lui, quand le chef dit « c'est pareil
+     qu'avant », personne ne peut savoir si le moteur 3D tourne, s'il a chargé
+     ses modèles, ou s'il est retombé sur le schéma. On devinait. */
+  const d = document.getElementById("diag");
+  if (d) {
+    const moteur = !XRAY ? "absent"
+                 : xrayLoading ? "chargement…"
+                 : XRAY.isReady() ? (xrayOn ? "3D ACTIVE" : "prêt mais éteint")
+                 : "non initialisé";
+    const os = XRAY && XRAY.hasAssets ? (XRAY.hasAssets("bones") ? "oui" : "non") : "?";
+    d.textContent = "moteur " + moteur + " · modèle os " + os;
+  }
   const hybride = xrayOn && LAYER_META.some(m => active[m.key] && !COUVERTURE_3D[m.key]);
   document.getElementById("lensState").textContent =
     (xrayOn ? (hybride ? "3D réelle + schéma" : "3D réelle") : "schéma") +
@@ -364,6 +386,9 @@ async function toggleHand() {
     handOn = true;
     lentilleSuitLaMain = true;
     lentilleCible = null;
+    // En gros plan sur la main, la lentille a du sens : elle suit la main.
+    LENS.setEnabled(true);
+    lensTool.classList.add("on");
     handTool.classList.add("on");
     // Le mode main est un gros plan : on éteint la 3D du corps entier, qui
     // n'apporte rien à cette distance et coûte cher sur téléphone.
@@ -552,6 +577,25 @@ async function switchCamera() {
 }
 
 document.getElementById("startBtn").addEventListener("click", startCamera);
+
+/* Purge complète : désinscrit le service worker et vide tous les caches, puis
+   recharge. Le seul moyen sûr de sortir d'une version bloquée sur un
+   téléphone, sans avoir à fouiller les réglages du navigateur. */
+document.getElementById("purgeBtn")?.addEventListener("click", async e => {
+  const b = e.currentTarget;
+  b.textContent = "Purge en cours…";
+  try {
+    if ("serviceWorker" in navigator) {
+      const rs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(rs.map(r => r.unregister()));
+    }
+    if (window.caches) {
+      const noms = await caches.keys();
+      await Promise.all(noms.map(n => caches.delete(n)));
+    }
+  } catch { /* rien à faire de plus : on recharge quand même */ }
+  location.replace(location.pathname + "?purge=" + Date.now());
+});
 document.getElementById("demoBtn").addEventListener("click", () => {
   demoMode = true;
   video.style.display = "none";
@@ -573,10 +617,15 @@ function enterMirror() {
      toute une journée, sans jamais voir ce qu'on avait construit. Le schéma
      redevient ce qu'il aurait toujours dû être — un repli. */
   demarrerAnatomieReelle();
-  // Lentille allumée d'emblée : c'est l'effet qui donne le sens de l'app.
+  /* Lentille ÉTEINTE au démarrage. Elle était allumée par défaut, en petit
+     disque de 26 % au centre : sur un corps entier vu à deux mètres, elle ne
+     révélait qu'une pastille d'anatomie et masquait tout le reste. C'est la
+     même cause que le « il faut trop rapprocher le téléphone » du mode main,
+     que je n'avais corrigée que pour la main. Par défaut, on montre TOUT ;
+     la lentille devient un effet qu'on choisit. */
   LENS.setMirrored(mirrored);
-  LENS.setEnabled(true);
-  lensTool.classList.add("on");
+  LENS.setEnabled(false);
+  lensTool.classList.remove("on");
   updateHud();
   if (!running) { running = true; requestAnimationFrame(loop); }
 }
@@ -814,7 +863,11 @@ function feed3D(res) {
 
 function tickFps(now, suffix) {
   frames++;
-  if (now - fpsT > 1000) { fpsEl.textContent = frames + " i/s" + suffix; frames = 0; fpsT = now; }
+  if (now - fpsT > 1000) {
+    fpsEl.textContent = frames + " i/s" + suffix;
+    frames = 0; fpsT = now;
+    updateHud();   // le diagnostic doit refléter l'état courant, pas celui du démarrage
+  }
 }
 
 function hideAll() {

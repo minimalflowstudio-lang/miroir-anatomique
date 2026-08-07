@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/style.css?v=29">
+<link rel="stylesheet" href="css/style.css?v=30">
 </head>
 <body>
 
@@ -36,6 +36,9 @@
   <button class="primary" id="startBtn">Démarrer la caméra</button>
   <button class="ghost" id="demoBtn">Mode démo (sans caméra)</button>
   <div id="status">Chargement du modèle de pose…</div>
+  <div id="versionSplash">version <b id="versionBig">…</b></div>
+  <button class="ghost" id="purgeBtn" style="font-size:12px;padding:8px 14px;opacity:.75">
+    Forcer la mise à jour</button>
 </div>
 
 <!-- Outils -->
@@ -59,6 +62,7 @@
 <div id="hud" class="hidden">
   <div>Couches : <b id="layersOn">OS</b> · <span id="version" style="opacity:.6"></span></div>
   <div><span id="fps">— i/s</span> · <span id="detect">En attente…</span></div>
+  <div id="diag" style="color:#4fc3f7"></div>
   <div id="lensState">schéma · lentille ON</div>
 </div>
 
@@ -84,20 +88,20 @@
   <div id="aidFoot"></div>
 </div>
 
-<script src="js/layers.js?v=29" defer></script>
-<script src="js/lens.js?v=29" defer></script>
-<script src="js/segment.js?v=29" defer></script>
-<script src="js/terms.js?v=29" defer></script>
-<script src="js/depth.js?v=29" defer></script>
-<script src="js/labels.js?v=29" defer></script>
+<script src="js/layers.js?v=30" defer></script>
+<script src="js/lens.js?v=30" defer></script>
+<script src="js/segment.js?v=30" defer></script>
+<script src="js/terms.js?v=30" defer></script>
+<script src="js/depth.js?v=30" defer></script>
+<script src="js/labels.js?v=30" defer></script>
 <!-- photoreal.js AVANT les deux moteurs 3D : ils lisent ses fonctions GLSL
      au moment de construire leurs shaders. Sans lui ils tournent quand même,
      mais sans l'éclairage accordé à l'image filmée. -->
-<script src="modules/photoreal.js?v=29" defer></script>
-<script src="modules/xray3d.js?v=29" defer></script>
-<script src="modules/xray_hand.js?v=29" defer></script>
-<script src="js/firstaid.js?v=29" defer></script>
-<script src="js/mirror.js?v=29" defer></script>
+<script src="modules/photoreal.js?v=30" defer></script>
+<script src="modules/xray3d.js?v=30" defer></script>
+<script src="modules/xray_hand.js?v=30" defer></script>
+<script src="js/firstaid.js?v=30" defer></script>
+<script src="js/mirror.js?v=30" defer></script>
 <script>
   if ("serviceWorker" in navigator && location.protocol === "https:") {
     navigator.serviceWorker.register("sw.js").catch(() => {});

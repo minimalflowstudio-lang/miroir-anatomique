@@ -165,6 +165,17 @@ html, body {
 #splash p { max-width: 480px; color: var(--text-dim); font-size: 13.5px; line-height: 1.6; }
 #status { font-size: 12px; color: #7f95a8; min-height: 1.2em; max-width: 90vw; }
 
+/* La version doit être LISIBLE sans qu'on la cherche : sans elle, impossible
+   de savoir si le téléphone exécute le code qu'on vient de publier ou une
+   copie gardée en cache. C'est la question qui nous a coûté une journée. */
+#versionSplash {
+  margin-top: 6px; font-size: 13px; color: var(--text-dim); letter-spacing: 0.5px;
+}
+#versionSplash b {
+  color: var(--accent); font-size: 17px; font-weight: 800;
+  padding: 2px 9px; border: 1.5px solid rgba(79,195,247,0.45); border-radius: 8px;
+}
+
 button.primary {
   background: var(--accent); color: var(--accent-dark); border: none; border-radius: 10px;
   padding: 13px 24px; font-size: 16px; font-weight: 700; cursor: pointer;
