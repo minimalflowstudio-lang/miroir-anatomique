@@ -446,6 +446,46 @@ function setMaskSource(cv) {
 /* ------------------------------------------------- Pose à chaque image */
 const visOk = (p, t = 0.45) => p && (p.visibility ?? 1) > t;
 
+/* Plausibilité GLOBALE de la pose.
+
+   MediaPipe Pose cherche toujours une personne : filmez une main en gros plan
+   et il y verra un corps entier, avec des landmarks parfaitement cohérents
+   ENTRE EUX mais à une échelle absurde. Résultat observé par le chef : un
+   squelette complet minuscule posé dans sa paume.
+
+   Les garde-fous par segment ne peuvent rien contre ça — chaque os est
+   plausible par rapport aux autres. Il faut juger la pose dans son ensemble :
+   sa taille à l'écran, ses proportions, et sa taille réelle en mètres. */
+function poseIsPlausible(lm, wl, shPx) {
+  /* 1. Un corps entier ne peut pas être minuscule dans l'image. En dessous de
+        9 % de la largeur pour les épaules, c'est une fausse détection. */
+  if (shPx < dims.W * 0.09) return false;
+
+  /* 2. Proportions humaines : la distance épaules → hanches vaut environ 1 à
+        2 fois la largeur d'épaules. Très en dehors, ce n'est pas un tronc. */
+  const shx = (lm[11].x + lm[12].x) / 2 * dims.W;
+  const shy = (lm[11].y + lm[12].y) / 2 * dims.H;
+  const hpx = (lm[23].x + lm[24].x) / 2 * dims.W;
+  const hpy = (lm[23].y + lm[24].y) / 2 * dims.H;
+  const trunkPx = Math.hypot(hpx - shx, hpy - shy);
+  const ratio = trunkPx / Math.max(shPx, 1e-3);
+  if (ratio < 0.55 || ratio > 3.2) return false;
+
+  /* 3. Taille réelle, quand les world landmarks sont là : des épaules
+        humaines mesurent entre 20 et 65 cm. En dehors, c'est autre chose —
+        typiquement une main prise pour un torse. */
+  if (wl) {
+    const wm = Math.hypot(wl[11].x - wl[12].x, wl[11].y - wl[12].y, wl[11].z - wl[12].z);
+    if (wm > 0 && (wm < 0.18 || wm > 0.65)) return false;
+  }
+  return true;
+}
+
+/* Hystérésis : sans elle, une pose limite ferait clignoter tout le squelette
+   d'une image à l'autre. Il faut plusieurs images concordantes pour changer
+   d'avis. */
+let plausibleStreak = 0, poseAccepted = false;
+
 function update(res) {
   if (!ready || !res || !res.landmarks) return;
   const lm = res.landmarks, wl = res.worldLandmarks || null;
@@ -462,6 +502,20 @@ function update(res) {
     const wm = Math.hypot(wl[11].x - wl[12].x, wl[11].y - wl[12].y, wl[11].z - wl[12].z);
     if (wm > 0.05) ppm = shPx / wm;
   } else if (shPx > 1) ppm = shPx / 0.36;
+
+  /* Pose crédible ? Trois images concordantes pour accepter, cinq pour
+     refuser : on préfère ne rien montrer plutôt qu'un squelette absurde. */
+  const ok = poseIsPlausible(lm, wl, shPx);
+  plausibleStreak = ok ? Math.min(plausibleStreak + 1, 3) : Math.max(plausibleStreak - 1, -3);
+  if (!poseAccepted && plausibleStreak >= 2) poseAccepted = true;
+  else if (poseAccepted && plausibleStreak <= -2) poseAccepted = false;
+
+  if (!poseAccepted) {
+    for (const r of regions) r.mesh.visible = false;
+    for (const p of pieces) p.mesh.visible = false;
+    render();
+    return;
+  }
 
   const P = new THREE.Vector3(), Q = new THREE.Vector3();
   const UP = new THREE.Vector3(0, 1, 0), DIR = new THREE.Vector3();
@@ -787,6 +841,10 @@ window.MIROIR_XRAY = {
   loadLayer, render,
   hasAssets: key => !!(groups[key] && groups[key].userData.loaded),
   regionCount: () => regions.length,
+  /* Vrai quand la pose détectée est jugée crédible. Faux typiquement quand la
+     caméra ne voit qu'une main : MediaPipe y voit un corps entier minuscule.
+     Utile pour afficher « approche-toi » plutôt qu'un écran vide. */
+  poseIsAccepted: () => poseAccepted,
   /* Diagnostic : où chaque région atterrit réellement à l'écran. */
   debugRegions() {
     return regions.map(r => {
