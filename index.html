@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="css/style.css?v=6">
+<link rel="stylesheet" href="css/style.css?v=11">
 </head>
 <body>
 
@@ -20,6 +20,7 @@
 <div id="stage">
   <div id="frame">
     <video id="video" class="mirrored" autoplay playsinline muted></video>
+    <canvas id="xrayCanvas"></canvas>
     <svg id="overlay" class="mirrored" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg>
   </div>
 </div>
@@ -37,6 +38,7 @@
 
 <!-- Outils -->
 <div id="tools" class="hidden">
+  <button class="tool" id="d3Tool" title="Anatomie 3D réelle (14 Mo au 1er chargement)">3D</button>
   <button class="tool on" id="lensTool" title="Lentille rayons X">◎</button>
   <button class="tool" id="segTool" title="Découper sur la silhouette">◐</button>
   <button class="tool" id="fsTool" title="Plein écran">⛶</button>
@@ -52,7 +54,7 @@
 <div id="hud" class="hidden">
   <div>Couches : <b id="layersOn">OS</b></div>
   <div><span id="fps">— i/s</span> · <span id="detect">En attente…</span></div>
-  <div id="lensState">lentille ON</div>
+  <div id="lensState">schéma · lentille ON</div>
 </div>
 
 <!-- Barre de couches (remplie par mirror.js) -->
@@ -77,11 +79,12 @@
   <div id="aidFoot"></div>
 </div>
 
-<script src="js/layers.js?v=8" defer></script>
-<script src="js/lens.js?v=8" defer></script>
-<script src="js/segment.js?v=8" defer></script>
-<script src="js/firstaid.js?v=8" defer></script>
-<script src="js/mirror.js?v=8" defer></script>
+<script src="js/layers.js?v=11" defer></script>
+<script src="js/lens.js?v=11" defer></script>
+<script src="js/segment.js?v=11" defer></script>
+<script src="modules/xray3d.js?v=11" defer></script>
+<script src="js/firstaid.js?v=11" defer></script>
+<script src="js/mirror.js?v=11" defer></script>
 <script>
   if ("serviceWorker" in navigator && location.protocol === "https:") {
     navigator.serviceWorker.register("sw.js").catch(() => {});

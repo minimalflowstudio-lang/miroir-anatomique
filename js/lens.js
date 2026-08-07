@@ -140,9 +140,21 @@ function centerOnVideoPoint(vx, vy) {
   refresh();
 }
 
+/* État en coordonnées du repère vidéo — c'est ce que consomme le moteur 3D. */
+function getState() {
+  return {
+    enabled: enabled,
+    cx: cx * dims.W,
+    cy: cy * dims.H,
+    radius: Math.min(dims.W, dims.H) * radiusFrac,
+    feather: Math.min(dims.W, dims.H) * radiusFrac * 0.38   // cf. paliers du dégradé
+  };
+}
+
 window.MIROIR_LENS = {
   init, setDims, setEnabled, isEnabled, setCenterFromClient,
-  setRadiusFrac, getRadiusFrac, nudgeRadius, setMirrored, centerOnVideoPoint, refresh
+  setRadiusFrac, getRadiusFrac, nudgeRadius, setMirrored, centerOnVideoPoint,
+  refresh, getState
 };
 
 })();

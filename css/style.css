@@ -53,7 +53,9 @@ html, body {
 /* ---------- Scène caméra ---------- */
 #stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 #frame { position: relative; }
-#video, #overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+#video, #overlay, #xrayCanvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#xrayCanvas { pointer-events: none; display: none; }
+#xrayCanvas.on { display: block; }
 #video { object-fit: cover; background: #000; }
 #overlay { pointer-events: none; }
 .mirrored { transform: scaleX(-1); }

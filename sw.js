@@ -3,18 +3,26 @@
    Les fichiers MediaPipe (CDN) sont mis en cache à la volée : après la
    première utilisation en ligne, l'app fonctionne sans réseau. */
 
-const CACHE = "miroir-v1";
+/* ⚠️ Incrémenter CACHE à CHAQUE mise en ligne : sinon les téléphones qui ont
+   déjà chargé l'app gardent l'ancienne version. */
+const CACHE = "miroir-v2";
 const CORE = [
   "./",
   "./index.html",
   "./css/style.css",
   "./js/layers.js",
+  "./js/lens.js",
+  "./js/segment.js",
   "./js/mirror.js",
   "./js/firstaid.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
 ];
+
+/* Les modules lourds (moteur 3D) et les modèles anatomiques ne sont PAS
+   pré-chargés : ils pèsent 14 Mo et tout le monde n'active pas la 3D.
+   Le gestionnaire `fetch` les met en cache au premier usage. */
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
@@ -33,7 +41,10 @@ self.addEventListener("fetch", e => {
   if (req.method !== "GET") return;
 
   const url = new URL(req.url);
-  const isModel = url.hostname.includes("jsdelivr.net") || url.hostname.includes("storage.googleapis.com");
+  const isModel = url.hostname.includes("jsdelivr.net")
+               || url.hostname.includes("storage.googleapis.com")
+               || url.pathname.includes("/assets/anatomy/")   // les .glb, lourds et figés
+               || url.pathname.includes("/modules/");
 
   // Modèle et runtime MediaPipe : cache d'abord (gros fichiers, jamais modifiés)
   if (isModel) {

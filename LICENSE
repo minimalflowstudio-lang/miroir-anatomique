@@ -1,0 +1,28 @@
+MIROIR ANATOMIQUE — licences
+============================
+
+Modèles anatomiques 3D (assets/anatomy/*.glb)
+---------------------------------------------
+Œuvres dérivées de **Z-Anatomy**
+(https://github.com/Z-Anatomy/Models-of-human-anatomy), sous licence
+**Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)**.
+
+Z-Anatomy est lui-même dérivé de **BodyParts3D**
+© The Database Center for Life Science (DBCLS), licence CC BY-SA 2.1 Japon.
+
+Texte de la licence : https://creativecommons.org/licenses/by-sa/4.0/
+
+Modifications apportées : filtrage des étiquettes du modèle source, regroupement
+des maillages par région corporelle, décimation vers un budget de triangles,
+export au format glTF binaire. Le détail figure dans
+`assets/anatomy/EXPORT_NOTES.md` et `assets/anatomy/manifest.json`.
+
+**Partage à l'identique** : ces fichiers dérivés restent sous CC BY-SA 4.0.
+Toute redistribution — y compris cette version publiée en ligne — doit
+conserver cette attribution et cette licence.
+
+Voir aussi `assets/anatomy/CREDITS.md`.
+
+Code de l'application
+---------------------
+Le reste du code de cette application est l'œuvre de l'équipe du projet.

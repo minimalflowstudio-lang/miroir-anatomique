@@ -1,0 +1,106 @@
+{
+ "draco": false,
+ "systems": [
+  {
+   "key": "bones",
+   "file": "bones.glb",
+   "tris_in": 598529,
+   "tris_out": 139984,
+   "ratio": 0.23391,
+   "bytes": 3423408,
+   "draco": false,
+   "regions": [
+    "foot.l",
+    "foot.r",
+    "forearm.l",
+    "forearm.r",
+    "hand.l",
+    "hand.r",
+    "head",
+    "neck",
+    "pelvis",
+    "shank.l",
+    "shank.r",
+    "thigh.l",
+    "thigh.r",
+    "torso",
+    "upperarm.l",
+    "upperarm.r"
+   ],
+   "rig": "bones.rig.json"
+  },
+  {
+   "key": "muscles",
+   "file": "muscles.glb",
+   "tris_in": 2137481,
+   "tris_out": 179980,
+   "ratio": 0.08421,
+   "bytes": 4573864,
+   "draco": false,
+   "regions": [
+    "foot.l",
+    "foot.r",
+    "forearm.l",
+    "forearm.r",
+    "hand.l",
+    "hand.r",
+    "head",
+    "neck",
+    "pelvis",
+    "shank.l",
+    "shank.r",
+    "thigh.l",
+    "thigh.r",
+    "torso",
+    "upperarm.l",
+    "upperarm.r"
+   ],
+   "rig": "muscles.rig.json"
+  },
+  {
+   "key": "nerves",
+   "file": "nerves.glb",
+   "tris_in": 786516,
+   "tris_out": 105994,
+   "ratio": 0.11443,
+   "bytes": 3269784,
+   "draco": false,
+   "regions": [
+    "head",
+    "neck",
+    "other",
+    "torso"
+   ],
+   "rig": "nerves.rig.json"
+  },
+  {
+   "key": "organs",
+   "file": "organs.glb",
+   "tris_in": 83178,
+   "tris_out": 83178,
+   "ratio": 1.0,
+   "bytes": 1930780,
+   "draco": false,
+   "regions": [
+    "head",
+    "neck",
+    "torso"
+   ],
+   "rig": "organs.rig.json"
+  },
+  {
+   "key": "vessels",
+   "file": "vessels.glb",
+   "tris_in": 67840,
+   "tris_out": 67840,
+   "ratio": 1.0,
+   "bytes": 1305736,
+   "draco": false,
+   "regions": [
+    "head",
+    "torso"
+   ],
+   "rig": "vessels.rig.json"
+  }
+ ]
+}

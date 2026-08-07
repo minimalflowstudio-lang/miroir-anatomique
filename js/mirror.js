@@ -45,7 +45,11 @@ async function loadModel() {
         delegate: "GPU"
       },
       runningMode: "VIDEO",
-      numPoses: 1
+      numPoses: 1,
+      // Landmarks en mètres, origine au centre des hanches : c'est ce qui
+      // permet au moteur 3D de poser une anatomie à la bonne échelle et à la
+      // bonne profondeur, au lieu de l'estimer depuis la largeur d'épaules.
+      outputWorldLandmarks: true
     });
     statusEl.textContent = "Modèle prêt. Autorise la caméra pour commencer.";
     document.getElementById("startBtn").disabled = false;
@@ -158,6 +162,7 @@ function toggleLayer(key, btn) {
   else setTimeout(() => { if (!active[key]) g.setAttribute("visibility", "hidden"); }, 260);
   btn.classList.toggle("on", active[key]);
   applyDepthOpacity();
+  if (xrayOn && XRAY) XRAY.setLayer(key, active[key]);
   updateHud();
 }
 
@@ -180,7 +185,8 @@ function updateHud() {
   const on = LAYER_META.filter(m => active[m.key]).map(m => m.label);
   document.getElementById("layersOn").textContent = on.length ? on.join(" + ") : "aucune";
   document.getElementById("lensState").textContent =
-    (LENS.isEnabled() ? "lentille ON — déplace le doigt" : "lentille OFF") +
+    (xrayOn ? "3D réelle" : "schéma") +
+    (LENS.isEnabled() ? " · lentille ON" : " · lentille OFF") +
     (SEG.isEnabled() ? " · silhouette ON" : "");
 }
 
@@ -194,7 +200,52 @@ document.getElementById("mirrorTool").addEventListener("click", e => {
   overlay.classList.toggle("mirrored", mirrored);
   e.currentTarget.classList.toggle("on", mirrored);
   LENS.setMirrored(mirrored);
+  if (XRAY && XRAY.isReady()) XRAY.setMirrored(mirrored);
 });
+
+/* ------------------------------------------------- Moteur 3D (Ada) ------
+   Chargé à la demande : three.js + les modèles pèsent ~14 Mo, inutile de les
+   imposer à qui veut juste le schéma. Quand la 3D est active, les couches SVG
+   s'effacent — les deux représentent la même chose. */
+const XRAY = window.MIROIR_XRAY;
+const xrayCanvas = document.getElementById("xrayCanvas");
+let xrayOn = false, xrayLoading = false;
+
+async function toggle3D() {
+  if (xrayLoading) return;
+  if (xrayOn) {                       // extinction
+    xrayOn = false;
+    xrayCanvas.classList.remove("on");
+    layerRoot.style.display = "";
+    d3Tool.classList.remove("on");
+    updateHud();
+    return;
+  }
+  if (!XRAY) { detectEl.textContent = "Moteur 3D absent (modules/xray3d.js)."; return; }
+  xrayLoading = true;
+  d3Tool.textContent = "…";
+  try {
+    // Le canvas doit être VISIBLE avant d'être dimensionné : tant qu'il est en
+    // display:none, sa largeur mesurée vaut 0 et le rendu sort vide.
+    xrayCanvas.classList.add("on");
+    if (!XRAY.isReady()) await XRAY.init({ canvas: xrayCanvas, videoEl: video });
+    XRAY.setDims(dims);
+    XRAY.setMirrored(mirrored);
+    // On n'allume que les couches déjà cochées, en commençant par les os :
+    // c'est le seul système entièrement articulé à ce jour.
+    for (const { key } of LAYER_META) await XRAY.setLayer(key, active[key]);
+    xrayOn = true;
+    layerRoot.style.display = "none";   // le SVG laisse la place à la 3D
+    d3Tool.classList.add("on");
+  } catch (e) {
+    xrayCanvas.classList.remove("on");
+    detectEl.textContent = "Moteur 3D : " + e.message;
+  } finally {
+    xrayLoading = false;
+    d3Tool.textContent = "3D";
+    updateHud();
+  }
+}
 
 const SEG = window.MIROIR_SEG;
 SEG.attach(overlay);
@@ -208,6 +259,9 @@ segTool.addEventListener("click", () => {
   segTool.classList.toggle("on", on);
   updateHud();
 });
+
+const d3Tool = document.getElementById("d3Tool");
+d3Tool.addEventListener("click", toggle3D);
 
 const lensTool = document.getElementById("lensTool");
 lensTool.addEventListener("click", () => {
@@ -289,15 +343,21 @@ function enterMirror() {
 
 /* Le mannequin de démo prend le format de l'écran, pour remplir la page
    aussi bien sur un téléphone en portrait que sur un écran de PC. */
+/* Un onglet en arrière-plan ou une rotation en cours peut renvoyer un viewport
+   de 0×0 : sans garde, le rapport devient NaN et tout le rendu part en vrille. */
+function viewport() {
+  return { w: Math.max(window.innerWidth || 0, 1), h: Math.max(window.innerHeight || 0, 1) };
+}
+
 function setDemoDims() {
-  const ww = window.innerWidth, wh = window.innerHeight;
+  const { w, h } = viewport();
   // 0.62 minimum : en dessous, le mannequin bras écartés sortirait du cadre.
-  const ratio = Math.min(Math.max(ww / wh, 0.62), 1.9);
+  const ratio = Math.min(Math.max(w / h, 0.62), 1.9);
   dims = { W: Math.round(900 * ratio), H: 900 };
 }
 
 function fitFrame() {
-  const ww = window.innerWidth, wh = window.innerHeight;
+  const { w: ww, h: wh } = viewport();
   // Caméra : « cover » — l'image remplit l'écran (un miroir ne laisse pas de
   // bandes noires). Démo : « contain » — le mannequin reste entier.
   const scale = demoMode
@@ -307,6 +367,7 @@ function fitFrame() {
   frame.style.height = (dims.H * scale) + "px";
   overlay.setAttribute("viewBox", `0 0 ${dims.W} ${dims.H}`);
   LENS.setDims(dims);
+  if (XRAY && XRAY.isReady()) XRAY.setDims(dims);
 }
 function onResize() {
   if (demoMode) setDemoDims();
@@ -421,17 +482,34 @@ function loop() {
   const now = performance.now();
 
   if (demoMode) {
-    update(demoLandmarks(now));
+    const lm = demoLandmarks(now);
+    update(lm);
+    // Le mannequin pilote aussi la 3D : sans world landmarks, le moteur
+    // retombe sur une échelle estimée depuis la largeur d'épaules.
+    feed3D({ landmarks: [lm], worldLandmarks: null });
     tickFps(now, " (démo)");
   } else if (landmarker && video.currentTime !== lastT && video.videoWidth > 0) {
     lastT = video.currentTime;
     const res = landmarker.detectForVideo(video, now);
     update(res.landmarks?.[0] || null);
     SEG.process(video, now);
+    feed3D(res);
     tickFps(now, "");
   }
   requestAnimationFrame(loop);
 }
+/* Transmet au moteur 3D la pose, la lentille et la silhouette. */
+function feed3D(res) {
+  if (!xrayOn || !XRAY) return;
+  const L = LENS.getState();
+  XRAY.setLens({ enabled: L.enabled, cx: L.cx, cy: L.cy, radius: L.radius, feather: L.feather });
+  XRAY.update({
+    landmarks:        res.landmarks?.[0] || null,
+    worldLandmarks:   res.worldLandmarks?.[0] || null,
+    segmentationMask: SEG.isEnabled() ? SEG.getCanvas() : null
+  });
+}
+
 function tickFps(now, suffix) {
   frames++;
   if (now - fpsT > 1000) { fpsEl.textContent = frames + " i/s" + suffix; frames = 0; fpsT = now; }
