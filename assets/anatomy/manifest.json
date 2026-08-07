@@ -2,6 +2,25 @@
  "draco": false,
  "systems": [
   {
+   "key": "arm",
+   "file": "arm.glb",
+   "tris_in": 33704,
+   "tris_out": 33704,
+   "ratio": 1.0,
+   "bytes": 717632,
+   "draco": false,
+   "regions": [
+    "forearm.l",
+    "forearm.r",
+    "hand.l",
+    "hand.r",
+    "upperarm.l",
+    "upperarm.r"
+   ],
+   "rig": "arm.rig.json",
+   "parts": "arm.parts.json"
+  },
+  {
    "key": "bones",
    "file": "bones.glb",
    "tris_in": 598529,
@@ -44,6 +63,21 @@
    ],
    "rig": "hand.rig.json",
    "parts": "hand.parts.json"
+  },
+  {
+   "key": "head",
+   "file": "head.glb",
+   "tris_in": 204624,
+   "tris_out": 204624,
+   "ratio": 1.0,
+   "bytes": 6953236,
+   "draco": false,
+   "regions": [
+    "head",
+    "neck"
+   ],
+   "rig": "head.rig.json",
+   "parts": "head.parts.json"
   },
   {
    "key": "muscles",

@@ -15,7 +15,18 @@
 const THREE_CDN = "https://cdn.jsdelivr.net/npm/three@0.166.1/+esm";
 const THREE_CDN_EXAMPLES = "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/";
 
-const LAYER_KEYS = ["bones", "muscles", "nerves", "organs", "vessels"];
+const LAYER_KEYS = ["bones", "muscles", "nerves", "organs", "vessels",
+                    /* surcouches pleine définition, pour le gros plan */
+                    "head", "arm"];
+
+/* Une surcouche remplace les régions correspondantes des couches de base :
+   sans cela le crâne serait rendu deux fois, en basse et en pleine définition,
+   et les deux surfaces scintilleraient l'une contre l'autre. */
+const DETAIL_LAYERS = {
+  head: ["head", "neck"],
+  arm:  ["upperarm.l", "upperarm.r", "forearm.l", "forearm.r", "hand.l", "hand.r"],
+};
+const BASE_LAYERS = ["bones", "muscles", "nerves", "organs", "vessels"];
 
 let THREE = null;
 let renderer = null, scene = null, camera = null, dirLight = null, hemiLight = null;
@@ -593,9 +604,20 @@ function poseRegions(place3, ppm, shoulderPx) {
              && inFrame(_aT) && inFrame(_bT);
   }
 
+  /* Régions masquées parce qu'une surcouche pleine définition les couvre. */
+  const covered = new Set();
+  for (const key in DETAIL_LAYERS) {
+    if (groups[key] && groups[key].visible && groups[key].userData.loaded) {
+      for (const r of DETAIL_LAYERS[key]) covered.add(r);
+    }
+  }
+
   for (const r of regions) {
     const g = groups[r.layer];
     if (!g.visible) { r.mesh.visible = false; continue; }
+    if (covered.has(r.name) && BASE_LAYERS.indexOf(r.layer) !== -1) {
+      r.mesh.visible = false; continue;      // la surcouche prend le relais
+    }
 
     if (r.bind.type === "body") {
       if (!bodyOk) { r.mesh.visible = false; continue; }
