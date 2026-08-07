@@ -12,6 +12,15 @@ const MEDIAPIPE_CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10
 
 const { LAYERS, LAYER_META, LAYER_ORDER } = window.MIROIR_LAYERS;
 
+/* Version affichée à l'écran. Sans elle, impossible de savoir ce que le
+   téléphone du chef exécute réellement — et « c'est pareil qu'avant » devient
+   indiagnosticable. Lue depuis le ?v= de ce script même, donc jamais périmée. */
+const VERSION = (() => {
+  const s = document.querySelector('script[src*="mirror.js"]');
+  const m = s && s.src.match(/[?&]v=(\d+)/);
+  return m ? "v" + m[1] : "v?";
+})();
+
 const video    = document.getElementById("video");
 const overlay  = document.getElementById("overlay");
 const frame    = document.getElementById("frame");
@@ -205,6 +214,8 @@ function etatProfondeur() {
 function updateHud() {
   const on = LAYER_META.filter(m => active[m.key]).map(m => m.label);
   document.getElementById("layersOn").textContent = on.length ? on.join(" + ") : "aucune";
+  const v = document.getElementById("version");
+  if (v) v.textContent = VERSION;
   const hybride = xrayOn && LAYER_META.some(m => active[m.key] && !COUVERTURE_3D[m.key]);
   document.getElementById("lensState").textContent =
     (xrayOn ? (hybride ? "3D réelle + schéma" : "3D réelle") : "schéma") +
@@ -250,6 +261,21 @@ function appliquerVisibiliteSVG() {
   for (const key of LAYER_ORDER) {
     const cacheParLa3D = xrayOn && COUVERTURE_3D[key];
     groups[key].root.style.display = cacheParLa3D ? "none" : "";
+  }
+}
+
+/* Allumage automatique au démarrage, sans bloquer l'affichage : la caméra doit
+   apparaître tout de suite, l'anatomie arrive quand elle est prête. */
+async function demarrerAnatomieReelle() {
+  if (!XRAY || xrayOn || xrayLoading) return;
+  detectEl.textContent = "Chargement de l'anatomie réelle…";
+  try {
+    await toggle3D();
+    if (xrayOn) detectEl.textContent = "Anatomie réelle active ✓";
+  } catch {
+    // WebGL absent, hors ligne au premier lancement, GPU refusé : le schéma
+    // vectoriel reste affiché, l'app fonctionne quand même.
+    detectEl.textContent = "Anatomie réelle indisponible — affichage schématique.";
   }
 }
 
@@ -541,6 +567,12 @@ function enterMirror() {
   layerBar.classList.remove("hidden");
   tools.classList.remove("hidden");
   applyDepthOpacity();
+
+  /* L'anatomie réelle s'allume SEULE. Elle était derrière un bouton, éteinte
+     par défaut : le chef a donc jugé l'app sur le schéma vectoriel pendant
+     toute une journée, sans jamais voir ce qu'on avait construit. Le schéma
+     redevient ce qu'il aurait toujours dû être — un repli. */
+  demarrerAnatomieReelle();
   // Lentille allumée d'emblée : c'est l'effet qui donne le sens de l'app.
   LENS.setMirrored(mirrored);
   LENS.setEnabled(true);
