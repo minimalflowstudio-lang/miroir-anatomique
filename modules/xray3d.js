@@ -32,6 +32,7 @@ let THREE = null;
 let renderer = null, scene = null, camera = null, dirLight = null, hemiLight = null;
 let analyzer = null;                  // mesure de l'éclairage réel (photoreal.js)
 let realism = 1;                      // 0 = rendu neutre, 1 = intégration complète
+let boneTexture = 0.35;               // force du micro-relief de matière
 let canvas = null, videoEl = null;
 let ready = false;
 let dims = { W: 1280, H: 720 };
@@ -140,6 +141,11 @@ async function loadLayer(key, onProgress) {
     transparent: true, opacity, vertexColors: true,
   });
   if ("envMapIntensity" in mat) mat.envMapIntensity = 0;
+  /* Matière d'os procédurale : sans elle, une couleur unie lit comme un
+     aplat de dessin animé quel que soit l'éclairage (voir photoreal.js). */
+  if (window.MIROIR_PHOTOREAL && window.MIROIR_PHOTOREAL.applyBoneTexture) {
+    window.MIROIR_PHOTOREAL.applyBoneTexture(mat, boneTexture);
+  }
 
   /* Une région jointe ressort en plusieurs primitives glTF (une par matériau),
      nommées « région », « région_1 », « région_2 »… et l'exportateur RETIRE
@@ -832,6 +838,11 @@ window.MIROIR_XRAY = {
   setRealism(v) { realism = Math.min(Math.max(v, 0), 1); render(); },
   /* Dosage du « vu à travers la peau » : 0 = anatomie posée par-dessus,
      1 = entièrement fondue dans l'image filmée. */
+  /* Force du micro-relief de matière : 0 = surface lisse (aspect dessin
+     animé), 0,35 par défaut, 1 = très granuleux. Prend effet au prochain
+     chargement de couche. */
+  setBoneTexture(v) { boneTexture = Math.min(Math.max(v, 0), 1); },
+  getBoneTexture: () => boneTexture,
   setSeeThrough(v) {
     if (composeMat) composeMat.uniforms.uSeeThrough.value = Math.min(Math.max(v, 0), 1);
     render();

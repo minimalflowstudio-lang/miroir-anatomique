@@ -193,6 +193,127 @@ vec3 pr_grade(vec3 c, vec3 tint, float exposure) {
 }
 `;
 
-window.MIROIR_PHOTOREAL = { createAnalyzer, applyLighting, GLSL };
+/* ==================== Matière : texture d'os procédurale ==================
+   Z-Anatomy ne livre que de la GÉOMÉTRIE — aucune texture. Une surface d'une
+   seule couleur, si bien éclairée soit-elle, lit toujours comme du dessin
+   animé : c'est l'absence de matière qui trahit la synthèse, avant l'éclairage.
+
+   On fabrique donc la matière dans le shader, en bruit 3D calculé sur la
+   position LOCALE du maillage — donc solidaire de l'os, sans glissement quand
+   le corps bouge. Trois échelles superposées :
+     — grande : alternance cortical clair / spongieux plus chaud ;
+     — moyenne : marbrures et travées ;
+     — fine : porosité, qui casse le vernis uniforme.
+   Le bruit module aussi la RUGOSITÉ : une surface dont le brillant varie
+   accroche la lumière comme une vraie matière. */
+
+const BONE_PARS = `
+varying vec3 vLocalPos;
+float bt_hash(vec3 p) {
+  p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
+  p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float bt_noise(vec3 x) {
+  vec3 i = floor(x), f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(bt_hash(i + vec3(0,0,0)), bt_hash(i + vec3(1,0,0)), f.x),
+                 mix(bt_hash(i + vec3(0,1,0)), bt_hash(i + vec3(1,1,0)), f.x), f.y),
+             mix(mix(bt_hash(i + vec3(0,0,1)), bt_hash(i + vec3(1,0,1)), f.x),
+                 mix(bt_hash(i + vec3(0,1,1)), bt_hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+}
+float bt_fbm(vec3 p) {
+  return 0.55 * bt_noise(p) + 0.28 * bt_noise(p * 2.13) + 0.17 * bt_noise(p * 4.31);
+}
+`;
+
+const BONE_COLOR_PATCH = `
+  /* échelles en mètres : le modèle est à taille humaine réelle */
+  float nBig  = bt_fbm(vLocalPos * 34.0);
+  float nMid  = bt_fbm(vLocalPos * 145.0);
+  float nFine = bt_noise(vLocalPos * 620.0);
+
+  /* marbrures : l'os alterne des zones denses claires et du spongieux plus
+     chaud et plus sombre */
+  float marble = smoothstep(0.35, 0.72, nBig * 0.65 + nMid * 0.35);
+  vec3 dense  = diffuseColor.rgb * 1.06;
+  vec3 spongy = diffuseColor.rgb * vec3(0.82, 0.75, 0.64);
+  diffuseColor.rgb = mix(spongy, dense, marble);
+
+  /* porosité fine : de minuscules points sombres, invisibles isolément mais
+     décisifs à l'œil — c'est ce qui distingue une matière d'un aplat */
+  diffuseColor.rgb *= 1.0 - 0.16 * smoothstep(0.62, 0.98, nFine);
+
+  /* veinules et travées */
+  float vein = smoothstep(0.48, 0.52, nMid);
+  diffuseColor.rgb *= mix(0.94, 1.03, vein);
+`;
+
+const BONE_ROUGH_PATCH = `
+  /* Rugosité variable : un brillant qui varie sur la surface accroche la
+     lumière comme une matière réelle. Constante, il fait plastique. */
+  roughnessFactor *= 0.80 + 0.34 * bt_fbm(vLocalPos * 95.0);
+  roughnessFactor = clamp(roughnessFactor, 0.35, 1.0);
+`;
+
+/* MICRO-RELIEF — l'élément décisif.
+   Une variation de COULEUR sur une surface lisse reste une peinture : la
+   lumière continue de glisser uniformément, et l'œil lit un dessin. En
+   perturbant la NORMALE, chaque aspérité accroche la lumière pour son propre
+   compte, et la surface devient une matière. C'est ce qui sépare un rendu
+   plausible d'un rendu « dessin animé ».
+   Le relief est dérivé du gradient du bruit, sans aucune texture image. */
+/* Le gradient est pris par DÉRIVÉES D'ÉCRAN plutôt qu'en réévaluant le bruit
+   autour du point : deux évaluations au lieu de huit. La version analytique
+   coûtait 22 ms par image — hors budget mobile — pour un résultat équivalent. */
+const BONE_BUMP_PATCH = `
+  {
+    float h = bt_noise(vLocalPos * 230.0) * 0.62
+            + bt_noise(vLocalPos * 780.0) * 0.38;
+    vec3 dpx = dFdx(-vViewPosition), dpy = dFdy(-vViewPosition);
+    float dhx = dFdx(h), dhy = dFdy(h);
+    vec3 r1 = cross(dpy, normal), r2 = cross(normal, dpx);
+    float det = dot(dpx, r1);
+    vec3 grad = sign(det) * (dhx * r1 + dhy * r2);
+    normal = normalize(abs(det) * normal - BONE_BUMP * 0.055 * grad);
+  }
+`;
+
+function applyBoneTexture(material, strength = 1) {
+  material.userData.boneTexture = true;
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vLocalPos;")
+      .replace("#include <begin_vertex>",
+               "#include <begin_vertex>\n  vLocalPos = position;");
+
+    let frag = shader.fragmentShader
+      .replace("#include <common>",
+               "#include <common>\n#define BONE_BUMP " + strength.toFixed(3) + "\n" + BONE_PARS)
+      .replace("#include <color_fragment>",
+               "#include <color_fragment>\n" + BONE_COLOR_PATCH)
+      .replace("#include <roughnessmap_fragment>",
+               "#include <roughnessmap_fragment>\n" + BONE_ROUGH_PATCH);
+
+    /* Le micro-relief doit venir APRÈS que three.js a établi `normal`, et
+       avant l'éclairage. Le point d'insertion diffère selon les versions, d'où
+       ces deux tentatives — sans quoi le patch serait silencieusement ignoré. */
+    if (frag.indexOf("#include <normal_fragment_maps>") !== -1) {
+      frag = frag.replace("#include <normal_fragment_maps>",
+                          "#include <normal_fragment_maps>\n" + BONE_BUMP_PATCH);
+    } else if (frag.indexOf("#include <normal_fragment_begin>") !== -1) {
+      frag = frag.replace("#include <normal_fragment_begin>",
+                          "#include <normal_fragment_begin>\n" + BONE_BUMP_PATCH);
+    } else {
+      console.warn("[photoreal] point d'insertion du relief introuvable — " +
+                   "matière appliquée sans micro-relief");
+    }
+    shader.fragmentShader = frag;
+  };
+  material.needsUpdate = true;
+  return material;
+}
+
+window.MIROIR_PHOTOREAL = { createAnalyzer, applyLighting, applyBoneTexture, GLSL };
 
 })();
